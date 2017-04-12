@@ -9,6 +9,8 @@ class MongoStorage extends RC::Module
   # Scripts: {}
   require('./Constants') MongoStorage
 
+  require('./iterator/MongoCursor') MongoStorage
+
   require('./mixins/MongoCollectionMixin') MongoStorage
 
 
