@@ -383,7 +383,7 @@ module.exports = (MongoStorage)->
         else if aoQuery.$forIn?
           do =>
             voQuery.queryType = 'find'
-            voQuery.pipelines = []
+            voQuery.pipeline = []
 
             if aoQuery.$join?
               throw new Error '`$join` not available for Mongo queries'
@@ -393,10 +393,10 @@ module.exports = (MongoStorage)->
               throw new Error '`$aggregate` not available for Mongo queries'
 
             if (voFilter = aoQuery.$filter)?
-              voQuery.pipelines.push $match: @parseFilter Parser.parse voFilter
+              voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
 
             if (voSort = aoQuery.$sort)?
-              voQuery.pipelines.push $sort: aoQuery.$sort.reduce (item, prev)->
+              voQuery.pipeline.push $sort: aoQuery.$sort.reduce (item, prev)->
                 prev[wrapReference asRef] = if asSortDirect is 'ASC'
                   1
                 else
@@ -405,10 +405,10 @@ module.exports = (MongoStorage)->
               , {}
 
             if (vnOffset = aoQuery.$offset)?
-              voQuery.pipelines.push $skip: vnOffset
+              voQuery.pipeline.push $skip: vnOffset
 
             if (vnLimit = aoQuery.$limit)?
-              voQuery.pipelines.push $limit: vnLimit
+              voQuery.pipeline.push $limit: vnLimit
 
 
             if (voCollect = aoQuery.$collect)?
@@ -421,7 +421,7 @@ module.exports = (MongoStorage)->
                 wrapReference vsInto
               else
                 'GROUP'
-              voQuery.pipelines.push $group:
+              voQuery.pipeline.push $group:
                 _id: collect
                 "#{into}":
                   $push: Object.keys(@delegate.attributes).reduce (c, p)->
@@ -429,39 +429,39 @@ module.exports = (MongoStorage)->
                   , {}
 
             if (voHaving = aoQuery.$having)?
-              voQuery.pipelines.push $match: @parseFilter Parser.parse voHaving
+              voQuery.pipeline.push $match: @parseFilter Parser.parse voHaving
 
             if (aoQuery.$count)?
-              voQuery.pipelines.push $count: 'result'
-              voQuery.pipelines.push $replaceRoot: "$result"
+              voQuery.pipeline.push $count: 'result'
+              voQuery.pipeline.push $replaceRoot: "$result"
 
             else if (vsSum = aoQuery.$sum)?
-              voQuery.pipelines.push $group:
+              voQuery.pipeline.push $group:
                 _id : null
                 result: $sum: "${wrapReference vsSum}"
-              voQuery.pipelines.push $replaceRoot: "$result"
+              voQuery.pipeline.push $replaceRoot: "$result"
 
             else if (vsMin = aoQuery.$min)?
-              voQuery.pipelines.push $sort: "#{wrapReference vsMin}": 1
-              voQuery.pipelines.push $limit: 1
-              voQuery.pipelines.push $replaceRoot: "$#{wrapReference vsMin}"
+              voQuery.pipeline.push $sort: "#{wrapReference vsMin}": 1
+              voQuery.pipeline.push $limit: 1
+              voQuery.pipeline.push $replaceRoot: "$#{wrapReference vsMin}"
 
             else if (vsMax = aoQuery.$max)?
-              voQuery.pipelines.push $sort: "#{wrapReference vsMax}": -1
-              voQuery.pipelines.push $limit: 1
-              voQuery.pipelines.push $replaceRoot: "$#{wrapReference vsMax}"
+              voQuery.pipeline.push $sort: "#{wrapReference vsMax}": -1
+              voQuery.pipeline.push $limit: 1
+              voQuery.pipeline.push $replaceRoot: "$#{wrapReference vsMax}"
 
             else if (vsAvg = aoQuery.$avg)?
-              voQuery.pipelines.push $group:
+              voQuery.pipeline.push $group:
                 _id : null
                 result: $avg: "${wrapReference vsAvg}"
-              voQuery.pipelines.push $replaceRoot: "$result"
+              voQuery.pipeline.push $replaceRoot: "$result"
 
             else
               if (voReturn = aoQuery.$return)?
                 if _.isString aoQuery.$return
                   unless voReturn isnt '@doc'
-                    voQuery.pipelines.push
+                    voQuery.pipeline.push
                       $replaceRoot: "$#{wrapReference voReturn}"
                 else if _.isObject voReturn
                   vhObj = {}
@@ -470,14 +470,14 @@ module.exports = (MongoStorage)->
                     do (key, value)->
                       vhObj[key] = "$#{wrapReference value}"
                       projectObj[key] = 1
-                  voQuery.pipelines.push $addFields: vhObj
-                  voQuery.pipelines.push $project: projectObj
+                  voQuery.pipeline.push $addFields: vhObj
+                  voQuery.pipeline.push $project: projectObj
 
                 if aoQuery.$distinct
-                  voQuery.pipelines.push $project: _id : 0
-                  voQuery.pipelines.push $group:
+                  voQuery.pipeline.push $project: _id : 0
+                  voQuery.pipeline.push $group:
                     _id : '$$CURRENT'
-                  voQuery.pipelines.push $replaceRoot: "$_id"
+                  voQuery.pipeline.push $replaceRoot: "$_id"
 
 
         return voQuery
@@ -487,7 +487,7 @@ module.exports = (MongoStorage)->
         collection = yield @collection
         voNativeCursor = switch aoQuery.queryType
           when 'find'
-            yield collection.aggregate aoQuery.pipelines, cursor: batchSize: 1
+            yield collection.aggregate aoQuery.pipeline, cursor: batchSize: 1
           when 'insert'
             yield collection.insertOne aoQuery.snapshot,
               w: "majority"
@@ -515,6 +515,30 @@ module.exports = (MongoStorage)->
 
         voCursor = MongoStorage::MongoCursor.new @delegate, voNativeCursor
         return voCursor
+
+    @public @async createFileWriteStream: Function,
+      args: [Object]
+      return: Object
+      default: (opts) ->
+        console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
+        bucket = yield @bucket
+        bucket.openUploadStream opts._id, {}
+
+    @public @async createFileReadStream: Function,
+      args: [Object]
+      return: Object
+      default: (opts) ->
+        console.log '@@@@@@@!!!!!!! Storage.createFileReadStream', opts
+        bucket = yield @bucket
+        bucket.openDownloadStreamByName opts._id, {}
+
+    @public @async fileExists: Function,
+      args: [Object]
+      return: Boolean
+      default: (opts, callback) ->
+        console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
+        bucket = yield @bucket
+        yield bucket.find(filename: opts._id).hasNext()
 
 
   return MongoStorage::MongoCollectionMixin.initialize()
