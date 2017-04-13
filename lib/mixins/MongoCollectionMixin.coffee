@@ -36,9 +36,9 @@ module.exports = (MongoStorage)->
         do => @connection
         return
 
-    cpoConnection = @private @static _connection: RC::PromiseInterface
-    ipoCollection = @private _collection: RC::PromiseInterface
-    ipoBucket     = @private _bucket: RC::PromiseInterface
+    cpoConnection = @private @static connection: RC::PromiseInterface
+    ipoCollection = @private collection: RC::PromiseInterface
+    ipoBucket     = @private bucket: RC::PromiseInterface
 
     @public connection: RC::PromiseInterface,
       get: ->
