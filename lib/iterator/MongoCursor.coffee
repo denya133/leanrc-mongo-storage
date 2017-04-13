@@ -11,7 +11,7 @@ module.exports = (MongoStorage)->
     @Module: MongoStorage
 
     ipoCursor = @private _cursor: RC::Constants.ANY
-    ipcRecord = @private Record: RC::Class
+    ipcRecord = @private _Record: RC::Class
 
     @public setCursor: Function,
       args: [RC::Constants.ANY]
