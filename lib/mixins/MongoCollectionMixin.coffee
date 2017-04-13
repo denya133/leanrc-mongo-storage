@@ -6,6 +6,7 @@ moment          = require 'moment'
 RC              = require 'RC'
 LeanRC          = require 'LeanRC'
 
+
 ###
 ```coffee
 # in application when its need
