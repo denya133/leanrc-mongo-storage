@@ -15,7 +15,7 @@ module.exports = (MongoStorage)->
 
     @public setCursor: Function,
       args: [RC::Constants.ANY]
-      return: ArangoCursorInterface
+      return: LeanRC::CursorInterface
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
@@ -25,15 +25,15 @@ module.exports = (MongoStorage)->
         @[ipcRecord] = acRecord
         return @
 
-    @public toArray: Function,
+    @public @async toArray: Function,
       default: (acRecord = null)->
-        while @hasNext()
-          @next(acRecord)
+        while yield @hasNext()
+          yield @next acRecord
 
-    @public next: Function,
+    @public @async next: Function,
       default: (acRecord = null)->
         acRecord ?= @[ipcRecord]
-        data = @[ipoCursor].next()
+        data = yield @[ipoCursor].next()
         if acRecord?
           if data?
             acRecord.new data
@@ -42,102 +42,102 @@ module.exports = (MongoStorage)->
         else
           data
 
-    @public hasNext: Function,
-      default: -> @[ipoCursor].hasNext()
+    @public @async hasNext: Function,
+      default: -> yield @[ipoCursor].hasNext()
 
-    @public close: Function,
-      default: -> @[ipoCursor].close()
+    @public @async close: Function,
+      default: -> yield @[ipoCursor].close()
 
-    @public count: Function,
-      default: -> @[ipoCursor].count arguments...
+    @public @async count: Function,
+      default: -> yield @[ipoCursor].count()
 
-    @public forEach: Function,
+    @public @async forEach: Function,
       default: (lambda, acRecord = null)->
         index = 0
         try
-          while @hasNext()
-            lambda @next(acRecord), index++
+          while yield @hasNext()
+            yield lambda (yield @next acRecord), index++
           return
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public map: Function,
+    @public @async map: Function,
       default: (lambda, acRecord = null)->
         index = 0
         try
-          while @hasNext()
-            lambda @next(acRecord), index++
+          while yield @hasNext()
+            yield lambda (yield @next acRecord), index++
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public filter: Function,
+    @public @async filter: Function,
       default: (lambda, acRecord = null)->
         index = 0
         records = []
         try
-          while @hasNext()
-            record = @next(acRecord)
-            if lambda record, index++
+          while yield @hasNext()
+            record = yield @next acRecord
+            if yield lambda record, index++
               records.push record
           records
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public find: Function,
+    @public @async find: Function,
       default: (lambda, acRecord = null)->
         index = 0
         _record = null
         try
-          while @hasNext()
-            record = @next(acRecord)
-            if lambda record, index++
+          while yield @hasNext()
+            record = yield @next acRecord
+            if yield lambda record, index++
               _record = record
               break
           _record
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public compact: Function,
+    @public @async compact: Function,
       default: (acRecord = null)->
         acRecord ?= @[ipcRecord]
         index = 0
         records = []
         try
-          while @hasNext()
-            rawRecord = @[ipoCursor].next()
+          while yield @hasNext()
+            rawRecord = yield @[ipoCursor].next()
             unless _.isEmpty rawRecord
               record = acRecord.new rawRecord
               records.push record
           records
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public reduce: Function,
+    @public @async reduce: Function,
       default: (lambda, initialValue, acRecord = null)->
         try
           index = 0
           _initialValue = initialValue
-          while @hasNext()
-            _initialValue = lambda _initialValue, @next(acRecord), index++
+          while yield @hasNext()
+            _initialValue = yield lambda _initialValue, (yield @next acRecord), index++
           _initialValue
         catch err
-          @dispose()
+          yield @close()
           throw err
 
-    @public first: Function,
+    @public @async first: Function,
       default: (acRecord = null)->
         try
-          if @hasNext()
-            @next(acRecord)
+          if yield @hasNext()
+            yield @next acRecord
           else
             null
         catch err
-          @dispose()
+          yield @close()
           throw err
 
     constructor: (acRecord, aoCursor = null)->
