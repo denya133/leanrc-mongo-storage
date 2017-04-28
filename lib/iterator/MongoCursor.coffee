@@ -1,21 +1,20 @@
 _  = require 'lodash'
-RC = require 'RC'
-LeanRC = require 'LeanRC'
 
 
-module.exports = (MongoStorage)->
-  class MongoStorage::MongoCursor extends RC::CoreObject
+module.exports = (Module)->
+  class MongoCursor extends Module::CoreObject
     @inheritProtected()
-    @implements LeanRC::CursorInterface
 
-    @Module: MongoStorage
+    @module Module
 
-    ipoCursor = @private cursor: RC::Constants.ANY
-    ipcRecord = @private Record: RC::Class
+    @implements Module::CursorInterface
+
+    ipoCursor = @private cursor: Module::ANY
+    ipcRecord = @private Record: Module::Class
 
     @public setCursor: Function,
-      args: [RC::Constants.ANY]
-      return: LeanRC::CursorInterface
+      args: [Module::ANY]
+      return: Module::CursorInterface
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
@@ -140,10 +139,11 @@ module.exports = (MongoStorage)->
           yield @close()
           throw err
 
-    constructor: (acRecord, aoCursor = null)->
-      super arguments...
-      @[ipcRecord] = acRecord
-      @[ipoCursor] = aoCursor
+    @public init: Function,
+      default: (acRecord, aoCursor = null)->
+        @super arguments...
+        @[ipcRecord] = acRecord
+        @[ipoCursor] = aoCursor
 
 
-  return MongoStorage::MongoCursor.initialize()
+  MongoCursor.initialize()
