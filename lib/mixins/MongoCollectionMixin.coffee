@@ -521,7 +521,7 @@ module.exports = (Module)->
         default: (opts) ->
           console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
           bucket = yield @bucket
-          bucket.openUploadStream opts._id, {}
+          yield return bucket.openUploadStream opts._id, {}
 
       @public @async createFileReadStream: Function,
         args: [Object]
@@ -529,7 +529,7 @@ module.exports = (Module)->
         default: (opts) ->
           console.log '@@@@@@@!!!!!!! Storage.createFileReadStream', opts
           bucket = yield @bucket
-          bucket.openDownloadStreamByName opts._id, {}
+          yield return bucket.openDownloadStreamByName opts._id, {}
 
       @public @async fileExists: Function,
         args: [Object]
@@ -537,7 +537,7 @@ module.exports = (Module)->
         default: (opts, callback) ->
           console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
           bucket = yield @bucket
-          yield bucket.find(filename: opts._id).hasNext()
+          yield return (yield bucket.find filename: opts._id).hasNext()
 
 
     MongoCollectionMixin.initializeMixin()
