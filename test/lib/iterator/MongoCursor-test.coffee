@@ -273,30 +273,26 @@ describe 'MongoCursor', ->
         assert.isTrue err?
         yield return
 
-  # describe '#toArray', ->
-  #   it 'should get array from cursor', ->
-  #     co ->
-  #       class Test extends LeanRC
-  #         @inheritProtected()
-  #         @include MongoStorage
-  #         @root __dirname
-  #       Test.initialize()
-  #       class TestRecord extends Test::Record
-  #         @inheritProtected()
-  #         @module Test
-  #         @attribute data: String, { default: '' }
-  #       TestRecord.initialize()
-  #       array = db._query 'FOR item IN test_thames_travel SORT item._key RETURN item'
-  #       .toArray()
-  #       cursor = Test::MongoCursor.new TestRecord, db._query '''
-  #         FOR item IN test_thames_travel SORT item._key RETURN item
-  #       '''
-  #       records = yield cursor.toArray()
-  #       assert.equal records.length, array.length, 'Counts of input and output data are different'
-  #       for record, index in records
-  #         assert.instanceOf record, TestRecord, "Record #{index} is incorrect"
-  #         assert.equal record.data, array[index].data, "Record #{index} `data` is incorrect"
-  #       return
+  describe '#toArray', ->
+    it 'should get array from cursor', ->
+      co ->
+        Test = createModule()
+        TestCollection = createCollection Test
+        TestRecord = createRecord Test
+        TestCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
+        collection = db.collection "test_thames_travel"
+        nativeCursor = yield collection.find().sort id: 1
+        nativeRecords = yield nativeCursor.toArray()
+        nativeCursor2 = yield collection.find().sort id: 1
+        cursor = Test::MongoCursor.new TestCollectionInstance, nativeCursor2
+        records = yield cursor.toArray()
+        assert.strictEqual records.length, nativeRecords.length, 'Counts of input and output data are different'
+        assert.instanceOf records, Array, 'Counts of input and output data are different'
+        for record, index in records
+          assert.instanceOf record, TestRecord, "Record #{index} has incorrect Class"
+          assert.strictEqual record.data, nativeRecords[index].data, "Record #{index} `data` is incorrect"
+        yield return
+
   # describe '#close', ->
   #   it 'should remove records from cursor', ->
   #     co ->
