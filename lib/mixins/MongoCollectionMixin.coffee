@@ -22,11 +22,22 @@ module.exports = (Module)->
 
 
 module.exports = (Module)->
-  Module.defineMixin (BaseClass) ->
+  {
+    ANY
+
+    Collection
+    QueryableMixinInterface
+    PromiseInterface
+    Utils
+    Query
+    MongoCursor
+  } = Module::
+
+  Module.defineMixin Collection, (BaseClass) ->
     class MongoCollectionMixin extends BaseClass
       @inheritProtected()
 
-      @implements Module::QueryableMixinInterface
+      @implements QueryableMixinInterface
 
       @public onRegister: Function,
         default: ->
@@ -34,13 +45,13 @@ module.exports = (Module)->
           do => @connection
           return
 
-      cpoConnection = @private @static connection: Module::PromiseInterface
-      ipoCollection = @private collection: Module::PromiseInterface
-      ipoBucket     = @private bucket: Module::PromiseInterface
+      cpoConnection = @private @static connection: PromiseInterface
+      ipoCollection = @private collection: PromiseInterface
+      ipoBucket     = @private bucket: PromiseInterface
 
-      @public connection: Module::PromiseInterface,
+      @public connection: PromiseInterface,
         get: ->
-          @constructor[cpoConnection] ?= Module::Utils.co =>
+          @constructor[cpoConnection] ?= Utils.co =>
             credentials = ''
             {username, password, host, port, default_db} = @getData()
             if username and password
@@ -50,18 +61,18 @@ module.exports = (Module)->
             return conn
           @constructor[cpoConnection]
 
-      @public collection: Module::PromiseInterface,
+      @public collection: PromiseInterface,
         get: ->
-          @[ipoCollection] ?= Module::Utils.co =>
+          @[ipoCollection] ?= Utils.co =>
             {db, collection} = @getData()
             conn = yield @connection
             voDB = conn.db db
             voDB.collection collection
           @[ipoCollection]
 
-      @public bucket: Module::PromiseInterface,
+      @public bucket: PromiseInterface,
         get: ->
-          @[ipoBucket] ?= Module::Utils.co =>
+          @[ipoBucket] ?= Utils.co =>
             {db, collection} = @getData()
             conn = yield @connection
             voDB = conn.db db
@@ -72,7 +83,7 @@ module.exports = (Module)->
 
       @public @async push: Function,
         default: (aoRecord)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .insert aoRecord
             .into @collectionFullName()
           yield @query voQuery
@@ -80,7 +91,7 @@ module.exports = (Module)->
 
       @public @async remove: Function,
         default: (id)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$eq: id}
             .remove()
@@ -89,7 +100,7 @@ module.exports = (Module)->
 
       @public @async take: Function,
         default: (id)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$eq: id}
             .return '@doc'
@@ -98,7 +109,7 @@ module.exports = (Module)->
 
       @public @async takeMany: Function,
         default: (ids)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$in: ids}
             .return '@doc'
@@ -106,14 +117,14 @@ module.exports = (Module)->
 
       @public @async takeAll: Function,
         default: ->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .return '@doc'
           yield @query voQuery
 
       @public @async override: Function,
         default: (id, aoRecord)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$eq: id}
             .replace aoRecord
@@ -121,7 +132,7 @@ module.exports = (Module)->
 
       @public @async patch: Function,
         default: (id, aoRecord)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$eq: id}
             .update aoRecord
@@ -129,7 +140,7 @@ module.exports = (Module)->
 
       @public @async includes: Function,
         default: (id)->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .filter '@doc._key': {$eq: id}
             .limit 1
@@ -139,7 +150,7 @@ module.exports = (Module)->
 
       @public @async length: Function,
         default: ->
-          voQuery = Module::Query.new()
+          voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .count()
           cursor = yield @query voQuery
@@ -306,7 +317,7 @@ module.exports = (Module)->
 
       @public parseFilter: Function,
         args: [Object]
-        return: Module::ANY
+        return: ANY
         default: ({field, parts, operator, operand, implicitField})->
           if field? and operator isnt '$elemMatch' and parts.length is 0
             @operatorsMap[operator] field, operand
@@ -512,14 +523,14 @@ module.exports = (Module)->
                 w: "majority", j: yes, wtimeout: 500
               yield collection.find aoQuery.filter
 
-          voCursor = Module::MongoCursor.new @delegate, voNativeCursor
+          voCursor = MongoCursor.new @delegate, voNativeCursor
           return voCursor
 
       @public @async createFileWriteStream: Function,
         args: [Object]
         return: Object
         default: (opts) ->
-          console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
+          # console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
           bucket = yield @bucket
           yield return bucket.openUploadStream opts._id, {}
 
@@ -527,7 +538,7 @@ module.exports = (Module)->
         args: [Object]
         return: Object
         default: (opts) ->
-          console.log '@@@@@@@!!!!!!! Storage.createFileReadStream', opts
+          # console.log '@@@@@@@!!!!!!! Storage.createFileReadStream', opts
           bucket = yield @bucket
           yield return bucket.openDownloadStreamByName opts._id, {}
 
@@ -535,7 +546,7 @@ module.exports = (Module)->
         args: [Object]
         return: Boolean
         default: (opts, callback) ->
-          console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
+          # console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
           bucket = yield @bucket
           yield return (yield bucket.find filename: opts._id).hasNext()
 

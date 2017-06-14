@@ -55,7 +55,7 @@ module.exports = (Module)->
 # миксин должен содержать нативный платформозависимый код для обращения к релаьной базе данных на понятном ей языке.
 
 module.exports = (Module)->
-  Module.defineMixin (BaseClass) ->
+  Module.defineMixin Module::Migration, (BaseClass) ->
     class MongoMigrationMixin extends BaseClass
       @inheritProtected()
 

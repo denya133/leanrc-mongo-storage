@@ -1,6 +1,6 @@
 # _         = require 'lodash'
 # fs        = require 'fs'
-RC = require 'RC'
+LeanRC = require 'LeanRC'
 
 ###
 Example of use
@@ -35,7 +35,7 @@ module.exports = TestApp.initialize().freeze()
 ###
 
 Extension = (BaseClass) ->
-  class MongoStorage extends RC::Module
+  class MongoStorage extends BaseClass
     @inheritProtected()
 
     require('./iterator/MongoCursor') @Module
@@ -44,7 +44,7 @@ Extension = (BaseClass) ->
     require('./mixins/MongoMigrationMixin') @Module
   MongoStorage.initializeMixin()
 
-sample = Extension RC::Module
+sample = Extension LeanRC#::Module
 Reflect.defineProperty Extension, 'reification',
   value: sample
 

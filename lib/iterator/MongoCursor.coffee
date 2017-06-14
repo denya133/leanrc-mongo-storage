@@ -2,26 +2,34 @@ _  = require 'lodash'
 
 
 module.exports = (Module)->
-  class MongoCursor extends Module::CoreObject
+  {
+    ANY
+
+    Collection
+    CoreObject
+    CursorInterface
+  } = Module::
+
+  class MongoCursor extends CoreObject
     @inheritProtected()
+
+    @implements CursorInterface
 
     @module Module
 
-    @implements Module::CursorInterface
-
-    ipoCursor = @private cursor: Module::ANY
-    ipcRecord = @private Record: Module::Class
+    ipoCursor = @private cursor: ANY
+    ipoCollection = @private collection: Collection
 
     @public setCursor: Function,
-      args: [Module::ANY]
-      return: Module::CursorInterface
+      args: [ANY]
+      return: CursorInterface
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
 
-    @public setRecord: Function,
-      default: (acRecord)->
-        @[ipcRecord] = acRecord
+    @public setCollection: Function,
+      default: (aoCollection)->
+        @[ipoCollection] = aoCollection
         return @
 
     @public @async toArray: Function,
@@ -31,7 +39,7 @@ module.exports = (Module)->
 
     @public @async next: Function,
       default: (acRecord = null)->
-        acRecord ?= @[ipcRecord]
+        acRecord ?= @[ipoCollection]?.delegate
         data = yield @[ipoCursor].next()
         if acRecord?
           if data?
@@ -102,7 +110,7 @@ module.exports = (Module)->
 
     @public @async compact: Function,
       default: (acRecord = null)->
-        acRecord ?= @[ipcRecord]
+        acRecord ?= @[ipoCollection]?.delegate
         index = 0
         records = []
         try
@@ -140,9 +148,9 @@ module.exports = (Module)->
           throw err
 
     @public init: Function,
-      default: (acRecord, aoCursor = null)->
+      default: (aoCollection, aoCursor = null)->
         @super arguments...
-        @[ipcRecord] = acRecord
+        @[ipoCollection] = aoCollection
         @[ipoCursor] = aoCursor
 
 
