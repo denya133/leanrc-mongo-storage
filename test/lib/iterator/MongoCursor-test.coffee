@@ -784,3 +784,27 @@ describe 'MongoCursor', ->
           err = error
         assert.isTrue err?
         yield return
+
+  describe '.restoreObject', ->
+    it 'Check correctness logic of the "restoreObject" static function', ->
+      co ->
+        Test = createModule()
+        err = null
+        try
+          yield Test::MongoCursor.restoreObject()
+        catch error
+          err = error
+        assert.isTrue err?
+        yield return
+
+  describe '.replicateObject', ->
+    it 'Check correctness logic of the "replicateObject" static function', ->
+      co ->
+        Test = createModule()
+        err = null
+        try
+          yield Test::MongoCursor.replicateObject()
+        catch error
+          err = error
+        assert.isTrue err?
+        yield return
