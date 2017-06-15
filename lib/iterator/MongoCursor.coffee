@@ -20,6 +20,11 @@ module.exports = (Module)->
     ipoCursor = @private cursor: ANY
     ipoCollection = @private collection: Collection
 
+    @public isClosed: Boolean,
+      default: false
+      get: ()->
+        @[ipoCursor].isClosed()
+
     @public setCursor: Function,
       args: [ANY]
       return: CursorInterface
@@ -50,13 +55,13 @@ module.exports = (Module)->
           data
 
     @public @async hasNext: Function,
-      default: -> yield @[ipoCursor].hasNext()
+      default: -> yield not @isClosed and (yield @[ipoCursor].hasNext())
 
     @public @async close: Function,
       default: -> yield @[ipoCursor].close()
 
     @public @async count: Function,
-      default: -> yield @[ipoCursor].count()
+      default: -> yield @[ipoCursor].count yes
 
     @public @async forEach: Function,
       default: (lambda, acRecord = null)->
@@ -138,20 +143,24 @@ module.exports = (Module)->
 
     @public @async first: Function,
       default: (acRecord = null)->
+        if @isClosed
+          throw new Error "You can't use method \"first\" twice on the one cursor."
+        result = null
         try
           if yield @hasNext()
-            yield @next acRecord
+            result = yield @next acRecord
           else
             null
+          yield @close()
         catch err
           yield @close()
           throw err
+        return yield result
 
     @public init: Function,
       default: (aoCollection, aoCursor = null)->
         @super arguments...
         @[ipoCollection] = aoCollection
         @[ipoCursor] = aoCursor
-
 
   MongoCursor.initialize()
