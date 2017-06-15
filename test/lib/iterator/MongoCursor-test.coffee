@@ -6,20 +6,20 @@ LeanRC              = require 'LeanRC'
 { co }              = LeanRC::Utils
 { MongoClient }     = require 'mongodb'
 
-createModule = (root = __dirname) ->
+createModuleClass = (root = __dirname) ->
   class Test extends LeanRC
     @inheritProtected()
     @include MongoStorage
     @root root
   Test.initialize()
 
-createCollection = (Module) ->
+createCollectionClass = (Module) ->
   class TestCollection extends Module::Collection
     @inheritProtected()
     @module Module
   TestCollection.initialize()
 
-createRecord = (Module) ->
+createRecordClass = (Module) ->
   class TestRecord extends Module::Record
     @inheritProtected()
     @module Module
@@ -53,8 +53,8 @@ describe 'MongoCursor', ->
   describe '.new', ->
     it 'Create MongoCursor instance with two valid params', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
@@ -67,8 +67,8 @@ describe 'MongoCursor', ->
         yield return
     it 'Create MongoCursor instance with only Collection instance as param', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         cursor = Test::MongoCursor.new testCollectionInstance
         assert.isTrue cursor?, 'Cursor not defined'
@@ -78,7 +78,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Create MongoCursor instance with only NativeCursor as param', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -89,7 +89,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Create MongoCursor instance without params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         assert.isTrue cursor?, 'Cursor not defined'
         assert.isFalse cursor[Test::MongoCursor.instanceVariables['_collection'].pointer]?
@@ -97,7 +97,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Create MongoCursor instance with invalid params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = null
         err = null
         try
@@ -110,8 +110,8 @@ describe 'MongoCursor', ->
   describe '#setCollection', ->
     it 'Setup collection on created MongoCursor instance with valid params', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         cursor = Test::MongoCursor.new()
         cursor.setCollection testCollectionInstance
@@ -120,8 +120,8 @@ describe 'MongoCursor', ->
         yield return
     it 'Use method setCollection for change used collection', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         testCollectionInstance2 = TestCollection.new()
         cursor = Test::MongoCursor.new testCollectionInstance
@@ -130,7 +130,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Setup collection on created MongoCursor instance without params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -141,7 +141,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Setup collection on created MongoCursor instance with invalid params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -154,7 +154,7 @@ describe 'MongoCursor', ->
   describe '#setCursor', ->
     it 'Setup cursor on created MongoCursor instance with valid params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
         cursor = Test::MongoCursor.new()
@@ -164,7 +164,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Use method setCursor for change used cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
         nativeCursor2 = yield dbCollection.find()
@@ -175,7 +175,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Setup cursor on created MongoCursor instance without params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -186,7 +186,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Setup cursor on created MongoCursor instance with invalid params', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -199,8 +199,8 @@ describe 'MongoCursor', ->
   describe '#hasNext', ->
     it 'Check correctness logic of the "hasNext" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().limit 1
@@ -211,7 +211,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "hasNext" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -224,9 +224,9 @@ describe 'MongoCursor', ->
   describe '#next', ->
     it 'Use next manually', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -245,9 +245,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Use next automatic', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -265,9 +265,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Use next automatic (with hasNext)', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -287,9 +287,9 @@ describe 'MongoCursor', ->
   describe '#toArray', ->
     it 'Check correctness logic of the "toArray" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -307,8 +307,8 @@ describe 'MongoCursor', ->
   describe '#close', ->
     it 'Check correctness logic of the "close" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -320,7 +320,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "close" function when cursor haven\'t Collection instance', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -331,7 +331,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "close" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -344,8 +344,8 @@ describe 'MongoCursor', ->
   describe '#count', ->
     it 'Check correctness logic of the "count" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -354,7 +354,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "count" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -367,9 +367,9 @@ describe 'MongoCursor', ->
   describe '#forEach', ->
     it 'Check correctness logic of the "forEach" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -389,7 +389,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "forEach" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -408,9 +408,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "forEach" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -430,7 +430,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "forEach" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -443,9 +443,9 @@ describe 'MongoCursor', ->
   describe '#map', ->
     it 'Check correctness logic of the "map" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -461,7 +461,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "map" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -476,9 +476,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "map" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -495,7 +495,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "map" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -508,9 +508,9 @@ describe 'MongoCursor', ->
   describe '#filter', ->
     it 'Check correctness logic of the "filter" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -522,7 +522,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "filter" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -533,9 +533,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "filter" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -548,7 +548,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "filter" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -561,9 +561,9 @@ describe 'MongoCursor', ->
   describe '#find', ->
     it 'Check correctness logic of the "find" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -578,7 +578,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "find" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -592,9 +592,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "find" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -610,7 +610,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "find" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -629,7 +629,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "compact" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -642,9 +642,9 @@ describe 'MongoCursor', ->
   describe '#reduce', ->
     it 'Check correctness logic of the "reduce" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -660,7 +660,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "reduce" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -675,9 +675,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "reduce" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -693,7 +693,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "reduce" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -706,9 +706,9 @@ describe 'MongoCursor', ->
   describe '#first', ->
     it 'Check correctness logic of the "first" function', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -738,7 +738,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "first" function without Record class', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
         cursor = Test::MongoCursor.new null, nativeCursor
@@ -755,9 +755,9 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "first" function with custom Record class', ->
       co ->
-        Test = createModule()
-        TestCollection = createCollection Test
-        TestRecord = createRecord Test
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().sort id: 1
@@ -775,7 +775,7 @@ describe 'MongoCursor', ->
         yield return
     it 'Check correctness logic of the "first" function when cursor haven\'t native cursor', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         cursor = Test::MongoCursor.new()
         err = null
         try
@@ -788,7 +788,7 @@ describe 'MongoCursor', ->
   describe '.restoreObject', ->
     it 'Check correctness logic of the "restoreObject" static function', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         err = null
         try
           yield Test::MongoCursor.restoreObject()
@@ -800,7 +800,7 @@ describe 'MongoCursor', ->
   describe '.replicateObject', ->
     it 'Check correctness logic of the "replicateObject" static function', ->
       co ->
-        Test = createModule()
+        Test = createModuleClass()
         err = null
         try
           yield Test::MongoCursor.replicateObject()

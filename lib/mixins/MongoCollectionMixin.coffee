@@ -28,7 +28,7 @@ module.exports = (Module)->
     Collection
     QueryableMixinInterface
     PromiseInterface
-    Utils
+    Utils: { co }
     Query
     MongoCursor
   } = Module::
@@ -39,47 +39,47 @@ module.exports = (Module)->
 
       @implements QueryableMixinInterface
 
-      @public onRegister: Function,
-        default: ->
-          @super()
-          do => @connection
-          return
-
       cpoConnection = @private @static connection: PromiseInterface
       ipoCollection = @private collection: PromiseInterface
       ipoBucket     = @private bucket: PromiseInterface
 
       @public connection: PromiseInterface,
         get: ->
-          @constructor[cpoConnection] ?= Utils.co =>
+          @constructor[cpoConnection] ?= co =>
             credentials = ''
-            {username, password, host, port, default_db} = @getData()
+            { username, password, host, port, default_db } = @getData()
             if username and password
               credentials =  "#{username}:#{password}@"
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{default_db}?authSource=admin"
-            conn = yield MongoClient.connect db_url
-            return conn
+            connection = yield MongoClient.connect db_url
+            yield return connection
           @constructor[cpoConnection]
 
       @public collection: PromiseInterface,
         get: ->
-          @[ipoCollection] ?= Utils.co =>
+          @[ipoCollection] ?= co =>
             {db, collection} = @getData()
-            conn = yield @connection
-            voDB = conn.db db
-            voDB.collection collection
+            connection = yield @connection
+            voDB = connection.db db
+            yield return voDB.collection collection
           @[ipoCollection]
 
       @public bucket: PromiseInterface,
         get: ->
-          @[ipoBucket] ?= Utils.co =>
+          @[ipoBucket] ?= co =>
             {db, collection} = @getData()
-            conn = yield @connection
-            voDB = conn.db db
-            new GridFSBucket voDB,
+            connection = yield @connection
+            voDB = connection.db db
+            yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
               bucketName: collection
           @[ipoBucket]
+
+      @public onRegister: Function,
+        default: ->
+          @super()
+          do => @connection
+          return
 
       @public @async push: Function,
         default: (aoRecord)->
@@ -533,6 +533,10 @@ module.exports = (Module)->
           # console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
           bucket = yield @bucket
           yield return bucket.openUploadStream opts._id, {}
+      ###
+        writeStream = yield ...
+        write.pipe ...
+      ###
 
       @public @async createFileReadStream: Function,
         args: [Object]
