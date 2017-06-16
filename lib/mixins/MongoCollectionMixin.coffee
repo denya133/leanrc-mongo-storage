@@ -58,21 +58,21 @@ module.exports = (Module)->
       @public collection: PromiseInterface,
         get: ->
           @[ipoCollection] ?= co =>
-            {db, collection} = @getData()
+            {db, collection: collectionName} = @getData()
             connection = yield @connection
             voDB = connection.db db
-            yield return voDB.collection collection
+            yield return voDB.collection collectionName
           @[ipoCollection]
 
       @public bucket: PromiseInterface,
         get: ->
           @[ipoBucket] ?= co =>
-            {db, collection} = @getData()
+            {db, collection: collectionName} = @getData()
             connection = yield @connection
             voDB = connection.db db
             yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
-              bucketName: collection
+              bucketName: collectionName
           @[ipoBucket]
 
       @public onRegister: Function,
@@ -93,7 +93,7 @@ module.exports = (Module)->
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$eq: id}
+            .filter '@doc._id': $eq: id
             .remove()
           yield @query voQuery
           return yes
@@ -102,7 +102,7 @@ module.exports = (Module)->
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$eq: id}
+            .filter '@doc._id': $eq: id
             .return '@doc'
           cursor = yield @query voQuery
           cursor.first()
@@ -111,7 +111,7 @@ module.exports = (Module)->
         default: (ids)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$in: ids}
+            .filter '@doc._id': $in: ids
             .return '@doc'
           yield @query voQuery
 
@@ -126,23 +126,25 @@ module.exports = (Module)->
         default: (id, aoRecord)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$eq: id}
+            .filter '@doc._id': $eq: id
             .replace aoRecord
+            .into @collectionFullName()
           yield @query voQuery
 
       @public @async patch: Function,
         default: (id, aoRecord)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$eq: id}
+            .filter '@doc._id': $eq: id
             .update aoRecord
+            .into @collectionFullName()
           yield @query voQuery
 
       @public @async includes: Function,
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._key': {$eq: id}
+            .filter '@doc._id': $eq: id
             .limit 1
             .return '@doc'
           cursor = yield @query voQuery
@@ -157,11 +159,29 @@ module.exports = (Module)->
           cursor.first()
 
       wrapReference = (value)->
-        if _.isString(value) and /^\@doc\./.test value
-          value.replace '@doc.', ''
+        if _.isString(value)
+          if /^\@doc\./.test value
+            value.replace '@doc.', ''
+          else
+            value.replace '@', ''
         else
-          value.replace '@', ''
+          value
 
+      buildIntervalQuery = (aoKey, aoInterval, aoIntervalSize, aoDirect)->
+        voIntervalStart = aoInterval.startOf(aoIntervalSize).toISOString()
+        voIntervalEnd = aoInterval.endOf(aoIntervalSize).toISOString()
+        if aoDirect
+          $and: [
+            "#{aoKey}": $gte: voIntervalStart
+            "#{aoKey}": $lt: voIntervalEnd
+          ]
+        else
+          $not: $and: [
+            "#{aoKey}": $gte: voIntervalStart
+            "#{aoKey}": $lt: voIntervalEnd
+          ]
+
+      # @TODO Нужно добавить описание входных параметров опреторам и соответственно их проверку
       @public operatorsMap: Object,
         default:
           # Logical Query Operators
@@ -172,177 +192,99 @@ module.exports = (Module)->
 
           # Comparison Query Operators (aoSecond is NOT sub-query)
           $eq: (aoFirst, aoSecond)->
-            $eq: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # ==
+            "#{wrapReference(aoFirst)}": $eq: wrapReference(aoSecond) # ==
           $ne: (aoFirst, aoSecond)->
-            $neq: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # !=
+            "#{wrapReference(aoFirst)}": $ne: wrapReference(aoSecond) # !=
           $lt: (aoFirst, aoSecond)->
-            $lt: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # <
+            "#{wrapReference(aoFirst)}": $lt: wrapReference(aoSecond) # <
           $lte: (aoFirst, aoSecond)->
-            $lte: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # <=
+            "#{wrapReference(aoFirst)}": $lte: wrapReference(aoSecond) # <=
           $gt: (aoFirst, aoSecond)->
-            $gt: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # >
+            "#{wrapReference(aoFirst)}": $gt: wrapReference(aoSecond) # >
           $gte: (aoFirst, aoSecond)->
-            $gte: "#{wrapReference(aoFirst)}": wrapReference(aoSecond) # >=
+            "#{wrapReference(aoFirst)}": $gte: wrapReference(aoSecond) # >=
           $in: (aoFirst, alItems)-> # check value present in array
-            $in: "#{wrapReference(aoFirst)}": alItems
+            "#{wrapReference(aoFirst)}": $in: alItems
           $nin: (aoFirst, alItems)-> # ... not present in array
-            $nin: "#{wrapReference(aoFirst)}": alItems
+            "#{wrapReference(aoFirst)}": $nin: alItems
 
           # Array Query Operators
           $all: (aoFirst, alItems)-> # contains some values
-            $and: alItems.map (aoItem)->
-              $in: "#{wrapReference(aoItem)}": wrapReference(aoFirst)
+            "#{wrapReference(aoFirst)}": $all: alItems
           $elemMatch: (aoFirst, aoSecond)-> # conditions for complex item
-            $elemMatch: "#{wrapReference(aoFirst)}": $and: aoSecond
+            "#{wrapReference(aoFirst)}": $elemMatch: aoSecond
           $size: (aoFirst, aoSecond)->
-            $size: "#{wrapReference(aoFirst)}": aoSecond
+            "#{wrapReference(aoFirst)}": $size: aoSecond
 
           # Element Query Operators
           $exists: (aoFirst, aoSecond)-> # condition for check present some value in field
-            $exists: "#{wrapReference(aoFirst)}": aoSecond
+            "#{wrapReference(aoFirst)}": $exists: aoSecond
           $type: (aoFirst, aoSecond)->
-            $exists: "#{wrapReference(aoFirst)}": aoSecond
+            "#{wrapReference(aoFirst)}": $type: aoSecond
 
           # Evaluation Query Operators
           $mod: (aoFirst, aoSecond)->
-            $mod: "#{wrapReference(aoFirst)}": aoSecond
-          $regex: (aoFirst, aoSecond)-> # value must be string. ckeck it by RegExp.
-            $regex: "#{wrapReference(aoFirst)}": new RefExp aoSecond
+            "#{wrapReference(aoFirst)}": $mod: aoSecond
+          $regex: (aoFirst, aoSecond, aoThird)-> # value must be string. ckeck it by RegExp.
+            [full, regexp, params] = /^\/([\s\S]*)\/(i?m?)$/i.exec aoSecond
+            value = $regex: new RegExp regexp, params
+            if aoThird?
+              value["$options"] = aoThird
+            "#{wrapReference(aoFirst)}": value
+          $text: ()-> throw new Error 'Not supported'
+          $where: ()-> throw new Error 'Not supported'
 
           # Datetime Query Operators
           $td: (aoFirst, aoSecond)-> # this day (today)
-            todayStart = moment().startOf 'day'
-            todayEnd = moment().endOf 'day'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": todayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": todayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": todayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": todayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment(), 'day', aoSecond
           $ld: (aoFirst, aoSecond)-> # last day (yesterday)
-            yesterdayStart = moment().subtract(1, 'days').startOf 'day'
-            yesterdayEnd = moment().subtract(1, 'days').endOf 'day'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": yesterdayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": yesterdayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": yesterdayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": yesterdayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'days'), 'day', aoSecond
           $tw: (aoFirst, aoSecond)-> # this week
-            weekStart = moment().startOf 'week'
-            weekEnd = moment().endOf 'week'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": weekStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": weekEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": weekStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": weekEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment(), 'week', aoSecond
           $lw: (aoFirst, aoSecond)-> # last week
-            weekStart = moment().subtract(1, 'weeks').startOf 'week'
-            weekEnd = weekStart.clone().endOf 'week'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": weekStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": weekEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": weekStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": weekEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'weeks'), 'week', aoSecond
           $tm: (aoFirst, aoSecond)-> # this month
-            firstDayStart = moment().startOf 'month'
-            lastDayEnd = moment().endOf 'month'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment(), 'month', aoSecond
           $lm: (aoFirst, aoSecond)-> # last month
-            firstDayStart = moment().subtract(1, 'months').startOf 'month'
-            lastDayEnd = firstDayStart.clone().endOf 'month'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'months'), 'month', aoSecond
           $ty: (aoFirst, aoSecond)-> # this year
-            firstDayStart = moment().startOf 'year'
-            lastDayEnd = firstDayStart.clone().endOf 'year'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment(), 'year', aoSecond
           $ly: (aoFirst, aoSecond)-> # last year
-            firstDayStart = moment().subtract(1, 'years').startOf 'year'
-            lastDayEnd = firstDayStart.clone().endOf 'year'
-            if aoSecond
-              $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
-            else
-              $not: $and: [
-                $gte: "#{wrapReference(aoFirst)}": firstDayStart.toISOString()
-                $lt: "#{wrapReference(aoFirst)}": lastDayEnd.toISOString()
-              ]
+            buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'years'), 'year', aoSecond
 
       @public parseFilter: Function,
         args: [Object]
         return: ANY
-        default: ({field, parts, operator, operand, implicitField})->
+        default: ({field, parts = [], operator, operand, implicitField})->
           if field? and operator isnt '$elemMatch' and parts.length is 0
             @operatorsMap[operator] field, operand
           else if field? and operator is '$elemMatch'
-            if implicitField is yes
-              @operatorsMap[operator] field, parts.map (part)=>
-                @parseFilter part
-            else
-              @operatorsMap[operator] field, parts.map (part)=>
-                @parseFilter part
+            @operatorsMap[operator] field, parts.reduce (result, part)=>
+              if implicitField and not part.field? and (not part.parts? or part.parts.length is 0)
+                subquery = @operatorsMap[part.operator] 'temporaryField', part.operand
+                Object.assign result, subquery.temporaryField
+              else
+                Object.assign result, @parseFilter part
+            , {}
           else
             @operatorsMap[operator ? '$and'] parts.map @parseFilter.bind @
 
       @public parseQuery: Function,
         default: (aoQuery)->
-          voQuery = null
+          if aoQuery.$join?
+            throw new Error '`$join` not available for Mongo queries'
+          if aoQuery.$let?
+            throw new Error '`$let` not available for Mongo queries'
+          if aoQuery.$aggregate?
+            throw new Error '`$aggregate` not available for Mongo queries'
+
+          voQuery = {}
           aggUsed = aggPartial = intoUsed = intoPartial = finAggUsed = finAggPartial = null
+
           if aoQuery.$remove?
             do =>
               if aoQuery.$forIn?
                 # работа будет только с одной коллекцией, поэтому игнорируем
-                if aoQuery.$join?
-                  throw new Error '`$join` not available for Mongo queries'
-                if aoQuery.$let?
-                  throw new Error '`$let` not available for Mongo queries'
                 voQuery.queryType = 'remove'
                 if (voFilter = aoQuery.$filter)?
                   voQuery.filter = @parseFilter Parser.parse voFilter
@@ -350,13 +292,9 @@ module.exports = (Module)->
           else if (voRecord = aoQuery.$insert)?
             do =>
               if aoQuery.$into?
-                if aoQuery.$forIn?
-                  # работа будет только с одной коллекцией, поэтому игнорируем
-                  if aoQuery.$join?
-                    throw new Error '`$join` not available for Mongo queries'
-                  if aoQuery.$let?
-                    throw new Error '`$let` not available for Mongo queries'
                 voQuery.queryType = 'insert'
+                # if aoQuery.$forIn?
+                  # работа будет только с одной коллекцией, поэтому игнорируем
                 voQuery.snapshot = @serializer.serialize voRecord
                 voQuery
           else if (voRecord = aoQuery.$update)?
@@ -365,11 +303,6 @@ module.exports = (Module)->
                 voQuery.queryType = 'update'
                 if aoQuery.$forIn?
                   # работа будет только с одной коллекцией, поэтому игнорируем $forIn
-                  if aoQuery.$join?
-                    throw new Error '`$join` not available for Mongo queries'
-                  if aoQuery.$let?
-                    throw new Error '`$let` not available for Mongo queries'
-
                   if (voFilter = aoQuery.$filter)?
                     voQuery.filter = @parseFilter Parser.parse voFilter
                 voQuery.snapshot = @serializer.serialize voRecord
@@ -380,33 +313,21 @@ module.exports = (Module)->
                 voQuery.queryType = 'replace'
                 if aoQuery.$forIn?
                   # работа будет только с одной коллекцией, поэтому игнорируем $forIn
-                  if aoQuery.$join?
-                    throw new Error '`$join` not available for Mongo queries'
-                  if aoQuery.$let?
-                    throw new Error '`$let` not available for Mongo queries'
                   if (voFilter = aoQuery.$filter)?
                     voQuery.filter = @parseFilter Parser.parse voFilter
-
                 voQuery.snapshot = @serializer.serialize voRecord
-
                 voQuery
           else if aoQuery.$forIn?
             do =>
               voQuery.queryType = 'find'
               voQuery.pipeline = []
 
-              if aoQuery.$join?
-                throw new Error '`$join` not available for Mongo queries'
-              if aoQuery.$let?
-                throw new Error '`$let` not available for Mongo queries'
-              if aoQuery.$aggregate?
-                throw new Error '`$aggregate` not available for Mongo queries'
-
               if (voFilter = aoQuery.$filter)?
                 voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
 
               if (voSort = aoQuery.$sort)?
                 voQuery.pipeline.push $sort: aoQuery.$sort.reduce (item, prev)->
+                  # @HACK prev[wrapReference asRef] = ' ASC'.indexOf asSortDirect
                   prev[wrapReference asRef] = if asSortDirect is 'ASC'
                     1
                   else
@@ -419,7 +340,6 @@ module.exports = (Module)->
 
               if (vnLimit = aoQuery.$limit)?
                 voQuery.pipeline.push $limit: vnLimit
-
 
               if (voCollect = aoQuery.$collect)?
                 collect = {}
@@ -448,7 +368,7 @@ module.exports = (Module)->
               else if (vsSum = aoQuery.$sum)?
                 voQuery.pipeline.push $group:
                   _id : null
-                  result: $sum: "${wrapReference vsSum}"
+                  result: $sum: "$#{wrapReference vsSum}"
                 voQuery.pipeline.push $replaceRoot: "$result"
 
               else if (vsMin = aoQuery.$min)?
@@ -464,7 +384,7 @@ module.exports = (Module)->
               else if (vsAvg = aoQuery.$avg)?
                 voQuery.pipeline.push $group:
                   _id : null
-                  result: $avg: "${wrapReference vsAvg}"
+                  result: $avg: "$#{wrapReference vsAvg}"
                 voQuery.pipeline.push $replaceRoot: "$result"
 
               else
@@ -489,7 +409,6 @@ module.exports = (Module)->
                       _id : '$$CURRENT'
                     voQuery.pipeline.push $replaceRoot: "$_id"
 
-
           return voQuery
 
       @public @async executeQuery: Function,
@@ -503,7 +422,7 @@ module.exports = (Module)->
                 w: "majority"
                 j: yes
                 wtimeout: 500
-              yield collection.find _key: $eq: aoQuery.snapshot._key
+              yield collection.find _id: $eq: aoQuery.snapshot._id
             when 'update'
               yield collection.updateMany aoQuery.filter, $set: aoQuery.snapshot,
                 multi: yes
