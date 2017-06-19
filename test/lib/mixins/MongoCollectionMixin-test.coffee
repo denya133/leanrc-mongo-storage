@@ -32,6 +32,7 @@ createRecordClass = (Module) ->
   class TestRecord extends Module::Record
     @inheritProtected()
     @module Module
+    @attribute cid: Number, default: -1
     @attribute data: String, default: ''
     @public init: Function,
       default: ->
@@ -68,13 +69,12 @@ describe 'MongoCollectionMixin', ->
       __db = yield MongoClient.connect db_url
       dbCollection = yield __db.createCollection 'test_thames_travel'
       date = new Date()
-      yield dbCollection.save id: 1, data: 'three', createdAt: date, updatedAt: date
+      yield dbCollection.save cid: 1, data: 'three', createdAt: date, updatedAt: date
       date = new Date()
-      yield dbCollection.save id: 2, data: 'men', createdAt: date, updatedAt: date
-      date = new Date()
-      yield dbCollection.save id: 3, data: 'in', createdAt: date, updatedAt: date
-      date = new Date()
-      yield dbCollection.save id: 4, data: 'a boat', createdAt: date, updatedAt: date
+      yield dbCollection.save cid: 2, data: 'men', createdAt: date, updatedAt: date
+      date = new Date Date.now() + 1000
+      yield dbCollection.save cid: 3, data: 'in', createdAt: date, updatedAt: date
+      yield dbCollection.save cid: 4, data: 'a boat', createdAt: date, updatedAt: date
       yield return
   after ->
     co ->
@@ -474,7 +474,7 @@ describe 'MongoCollectionMixin', ->
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         date = new Date()
-        testRecord = TestRecord.new { id: 5, data: '!', createdAt: date, updatedAt: date }, collection
+        testRecord = TestRecord.new { cid: 5, data: '!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
           .insert testRecord
           .into collection.collectionFullName()
@@ -486,7 +486,7 @@ describe 'MongoCollectionMixin', ->
         correctResult =
           queryType: 'insert'
           snapshot:
-            id: '5'
+            cid: 5
             rev: null
             type: 'Test::TestRecord'
             isHidden: no
@@ -494,8 +494,17 @@ describe 'MongoCollectionMixin', ->
             updatedAt: date.toISOString()
             deletedAt: null
             data: '!'
-        assert.deepEqual result1, correctResult
-        assert.deepEqual result2, correctResult
+        # assert.deepEqual result1, correctResult
+        # assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        res = yield nativeCollection.insertOne correctResult.snapshot,
+          w: "majority"
+          j: yes
+          wtimeout: 500
+        assert.strictEqual res.insertedCount, 1
+        res = yield nativeCollection.findOne cid: 5
+        assert.strictEqual res.data, '!'
         yield return
     it 'Check correctness logic of method "parseQuery" for "update" record', ->
       co ->
@@ -504,24 +513,25 @@ describe 'MongoCollectionMixin', ->
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         date = new Date()
-        testRecord = TestRecord.new { id: 5, data: '!!', createdAt: date, updatedAt: date }, collection
+        testRecord = TestRecord.new { cid: 5, data: '!!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
-          .filter '@doc._id': $eq: 5
+          .filter '@doc.cid': $eq: 5
           .update testRecord
           .into collection.collectionFullName()
 
         result1 = yield collection.parseQuery query
         result2 = yield collection.parseQuery
           '$forIn': '@doc': collection.collectionFullName()
-          '$filter': '@doc._id': $eq: 5
+          '$filter': '@doc.cid': $eq: 5
           '$update': testRecord
           '$into': collection.collectionFullName()
         correctResult =
           queryType: 'update'
-          filter: $and: [_id: $eq: 5]
+          filter: $and: [cid: $eq: 5]
           snapshot:
-            id: '5'
+            cid: 5
+            id: null
             rev: null
             type: 'Test::TestRecord'
             isHidden: no
@@ -531,6 +541,17 @@ describe 'MongoCollectionMixin', ->
             data: '!!'
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
+          multi: yes
+          w: "majority"
+          j: yes
+          wtimeout: 500
+        assert.strictEqual res.matchedCount, 1
+        assert.strictEqual res.modifiedCount, 1
+        res = yield nativeCollection.findOne correctResult.filter
+        assert.strictEqual res.data, '!!'
         yield return
     it 'Check correctness logic of method "parseQuery" for "replace" record', ->
       co ->
@@ -538,34 +559,46 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        testRecord = TestRecord.new { id: 5, data: '!!', createdAt: date, updatedAt: date }, collection
+        date = new Date()
+        testRecord = TestRecord.new { cid: 5, data: '!!!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
-          .filter '@doc._id': $eq: 5
+          .filter '@doc.cid': $eq: 5
           .replace testRecord
           .into collection.collectionFullName()
 
         result1 = yield collection.parseQuery query
         result2 = yield collection.parseQuery
           '$forIn': '@doc': collection.collectionFullName()
-          '$filter': '@doc._id': $eq: 5
+          '$filter': '@doc.cid': $eq: 5
           '$replace': testRecord
           '$into': collection.collectionFullName()
         correctResult =
           queryType: 'replace'
-          filter: $and: [_id: $eq: 5]
+          filter: $and: [cid: $eq: 5]
           snapshot:
-            id: '5'
+            cid: 5
+            id: null
             rev: null
             type: 'Test::TestRecord'
             isHidden: no
             createdAt: date.toISOString()
             updatedAt: date.toISOString()
             deletedAt: null
-            data: '!!'
+            data: '!!!'
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
+          multi: yes
+          w: "majority"
+          j: yes
+          wtimeout: 500
+        assert.strictEqual res.matchedCount, 1
+        assert.strictEqual res.modifiedCount, 1
+        res = yield nativeCollection.findOne correctResult.filter
+        assert.strictEqual res.data, '!!!'
         yield return
     it 'Check correctness logic of method "parseQuery" for "remove" record', ->
       co ->
@@ -573,277 +606,558 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        testRecord = TestRecord.new { id: 5, data: '!!', createdAt: date, updatedAt: date }, collection
+        date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
-          .filter '@doc._id': $eq: 5
+          .filter '@doc.cid': $eq: 5
           .remove()
 
         result1 = yield collection.parseQuery query
         result2 = yield collection.parseQuery
           '$forIn': '@doc': collection.collectionFullName()
-          '$filter': '@doc._id': $eq: 5
+          '$filter': '@doc.cid': $eq: 5
           '$remove': yes
-        console.log result1
-        console.log result2
         correctResult =
           queryType: 'remove'
-          filter: $and: [_id: $eq: 5]
+          filter: $and: [cid: $eq: 5]
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        res = yield nativeCollection.deleteMany correctResult.filter, $set: correctResult.snapshot,
+          w: "majority"
+          j: yes
+          wtimeout: 500
+        assert.strictEqual res.result.ok, 1
+        assert.strictEqual res.deletedCount, 1
+        res = yield nativeCollection.findOne correctResult.filter
+        assert.isFalse res?
         yield return
-    ###
-    it 'should get parse query for other with distinct return', ->
+    it 'Check correctness logic of method "parseQuery" for "count" records', -> # Need mongo version >= 3.4.0
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$let':
-            k:
-              '$forIn':
-                'doc1': 'test_samples'
-              '$filter':
-                '@doc1.test': 'test'
-              '$return': 'doc1'
-          '$collect':
-            l:
-              '$forIn':
-                'doc2': 'test_samples'
-              '$filter':
-                '@doc2.test': 'test'
-              '$return': 'doc2'
-          '$having':
-            '$and': [
-              '$or': [
-                'f': '$eq': '1'
-              ,
-                '@doc.g': '$eq': '2'
-              ]
-            ,
-              '@doc.h':
-                '$not': '$eq': '2'
-            ]
-          '$sort':
-            '@doc.field1': 'ASC'
-            '@doc.field2': 'DESC'
-          '$limit': 100
-          '$offset': 50
-          '$distinct': yes
-          '$return': '@doc'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) LET k = FOR doc1 IN test_samples FILTER ((doc1.test == "test")) RETURN doc1 COLLECT l = FOR doc2 IN test_samples FILTER ((doc2.test == "test")) RETURN doc2 INTO test_samples FILTER (((((("f" == "1")) || ((doc.g == "2")))) && (!(doc.h == "2")))) SORT doc.field1 ASC SORT doc.field2 DESC LIMIT 50, 100 RETURN DISTINCT doc'
-        yield return
-    it 'should get parse query for other with count', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .count()
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
           '$count': yes
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples COLLECT WITH COUNT INTO counter RETURN (counter ? counter : 0)'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $count: 'result'
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.deepEqual res, result: 2
         yield return
-    it 'should get parse query for other with sum', ->
+    it 'Check correctness logic of method "parseQuery" for "sum" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$sum': '@doc.test'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples COLLECT AGGREGATE result = SUM(TO_NUMBER(doc.test)) RETURN result'
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .sum 'cid'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$sum': 'cid'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $group:
+              _id: null
+              result: $sum: '$cid'
+          ,
+            $project: _id: 0
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.deepEqual res, result: 7 # 3 + 4
         yield return
-    it 'should get parse query for other with min', ->
+    it 'Check correctness logic of method "parseQuery" for "min" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$min': '@doc.test'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples SORT doc.test LIMIT 1 RETURN doc.test'
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .min 'cid'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$min': 'cid'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $sort: cid: 1
+          ,
+            $limit: 1
+          ,
+            $project:
+              _id: 0
+              result: "$cid"
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.deepEqual res, result: 3
         yield return
-    it 'should get parse query for other with max', ->
+    it 'Check correctness logic of method "parseQuery" for "max" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$max': '@doc.test'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples SORT doc.test DESC LIMIT 1 RETURN doc.test'
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .max 'cid'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$max': 'cid'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $sort: cid: -1
+          ,
+            $limit: 1
+          ,
+            $project:
+              _id: 0
+              result: "$cid"
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.deepEqual res, result: 4
         yield return
-    it 'should get parse query for other with average', ->
+    it 'Check correctness logic of method "parseQuery" for "avg" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$avg': '@doc.test'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples COLLECT AGGREGATE result = AVG(TO_NUMBER(doc.test)) RETURN result'
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .avg 'cid'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$avg': 'cid'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $group:
+              _id: null
+              result: $avg: '$cid'
+          ,
+            $project:
+              _id: 0
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.deepEqual res, result: 3.5
         yield return
-    it 'should get parse query for other with return', ->
+    it 'Check correctness logic of method "parseQuery" for "sort" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        date = new Date
-        result = collection.parseQuery
-          '$forIn':
-            'doc': 'test_samples'
-          '$into': 'test_samples'
-          '$join':
-            '$and': [
-              '@doc.tomatoId': '$eq': '@tomato._key'
-            ,
-              '@tomato.active': '$eq': yes
-            ]
-          '$filter':
-            '$and': [
-              '$or': [
-                'c': '$eq': '1'
-              ,
-                '@doc.b': '$eq': '2'
-              ]
-            ,
-              '@doc.b':
-                '$not': '$eq': '2'
-            ]
-          '$return':
-            'doc': '@doc'
-        assert.equal result, 'FOR doc IN test_samples FILTER ((doc.tomatoId == tomato._key) && (tomato.active == true)) FILTER (((((("c" == "1")) || ((doc.b == "2")))) && (!(doc.b == "2")))) INTO test_samples RETURN {doc: doc}'
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .sort cid: 'DESC'
+          .sort data: 'ASC'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$sort': [
+            cid: 'DESC'
+          ,
+            data: 'ASC'
+          ]
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $sort:
+              cid: -1
+              data: 1
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res.cid, 4
         yield return
-  ##
+    it 'Check correctness logic of method "parseQuery" for "limit" records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .limit 1
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$limit': 1
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $limit: 1
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 1
+        yield return
+    it 'Check correctness logic of method "parseQuery" for "offset" records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .offset 1
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$offset': 1
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $skip: 1
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res.cid, 4
+        yield return
+    it 'Check correctness logic of method "parseQuery" for "collect" records, with using "into"', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 1
+          .collect date: '$createdAt'
+          .into 'data'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 1
+          '$collect': date: '$createdAt'
+          '$into': 'data'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 1]
+          ,
+            $group:
+              _id: date: '$createdAt'
+              data: $push:
+                id: '$id'
+                rev: '$rev'
+                type: '$type'
+                cid: '$cid'
+                data: '$data'
+                isHidden: '$isHidden'
+                createdAt: '$createdAt'
+                deletedAt: '$deletedAt'
+                updatedAt: '$updatedAt'
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 2
+        yield return
+    it 'Check correctness logic of method "parseQuery" for "collect" records, without using "into"', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 1
+          .collect date: '$createdAt'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 1
+          '$collect': date: '$createdAt'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 1]
+          ,
+            $group:
+              _id: date: '$createdAt'
+              GROUP: $push:
+                id: '$id'
+                rev: '$rev'
+                type: '$type'
+                cid: '$cid'
+                data: '$data'
+                isHidden: '$isHidden'
+                createdAt: '$createdAt'
+                deletedAt: '$deletedAt'
+                updatedAt: '$updatedAt'
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 2
+        yield return
+    it 'Check correctness logic of method "parseQuery" for "having" records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 1
+          .having '@doc.cid': $lt: 3
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 1
+          '$having': '@doc.cid': $lt: 3
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 1]
+          ,
+            $match: $and: [cid: $lt: 3]
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res.cid, 2
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 1
+        yield return
+    it 'Check correctness logic of method "parseQuery" for simple format "return" records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .return 'data'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$return': '@doc.data'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $project:
+              _id: 0
+              data: 1
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res.data, 'in'
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 2
+        yield return
+    it 'Check correctness logic of method "parseQuery" for complex format "return" records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .return superdata: 'data'
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$return': superdata: '@doc.data'
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $addFields:
+              superdata: '$data'
+          ,
+            $project:
+              superdata: 1
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res.superdata, 'in'
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 2
+        yield return
+    it 'Check correctness logic of method "parseQuery" for "return" with "distinct" format records', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .filter '@doc.cid': $gt: 2
+          .return 'data'
+          .distinct()
+
+        result1 = yield collection.parseQuery query
+        result2 = yield collection.parseQuery
+          '$forIn': '@doc': collection.collectionFullName()
+          '$filter': '@doc.cid': $gt: 2
+          '$return': '@doc.data'
+          '$distinct': yes
+        correctResult =
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $project:
+              _id: 0
+              data: 1
+          ,
+            $group: _id: "$$CURRENT"
+          ]
+          queryType: 'find'
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
+
+        nativeCollection = yield collection.collection
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.next()
+        assert.strictEqual res._id.data, 'a boat'
+        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        res = yield cursor.toArray()
+        assert.strictEqual res.length, 2
+        yield return
+  ###
 
   describe '#executeQuery', ->
     it 'should send query to ArangoDB', ->

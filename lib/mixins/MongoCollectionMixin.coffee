@@ -326,13 +326,14 @@ module.exports = (Module)->
                 voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
 
               if (voSort = aoQuery.$sort)?
-                voQuery.pipeline.push $sort: aoQuery.$sort.reduce (item, prev)->
-                  # @HACK prev[wrapReference asRef] = ' ASC'.indexOf asSortDirect
-                  prev[wrapReference asRef] = if asSortDirect is 'ASC'
-                    1
-                  else
-                    -1
-                  prev
+                voQuery.pipeline.push $sort: voSort.reduce (result, item)->
+                  # @HACK result[wrapReference asRef] = ' ASC'.indexOf asSortDirect
+                  for own asRef, asSortDirect of item
+                    result[wrapReference asRef] = if asSortDirect is 'ASC'
+                      1
+                    else
+                      -1
+                  result
                 , {}
 
               if (vnOffset = aoQuery.$offset)?
@@ -354,8 +355,9 @@ module.exports = (Module)->
                 voQuery.pipeline.push $group:
                   _id: collect
                   "#{into}":
-                    $push: Object.keys(@delegate.attributes).reduce (c, p)->
+                    $push: Object.keys(@delegate.attributes).reduce (p, c)->
                       p[c] = "$#{c}"
+                      p
                     , {}
 
               if (voHaving = aoQuery.$having)?
@@ -363,36 +365,41 @@ module.exports = (Module)->
 
               if (aoQuery.$count)?
                 voQuery.pipeline.push $count: 'result'
-                voQuery.pipeline.push $replaceRoot: "$result"
 
               else if (vsSum = aoQuery.$sum)?
                 voQuery.pipeline.push $group:
                   _id : null
                   result: $sum: "$#{wrapReference vsSum}"
-                voQuery.pipeline.push $replaceRoot: "$result"
+                voQuery.pipeline.push $project: _id: 0
 
               else if (vsMin = aoQuery.$min)?
                 voQuery.pipeline.push $sort: "#{wrapReference vsMin}": 1
                 voQuery.pipeline.push $limit: 1
-                voQuery.pipeline.push $replaceRoot: "$#{wrapReference vsMin}"
+                voQuery.pipeline.push $project:
+                  _id: 0
+                  result: "$#{wrapReference vsMin}"
 
               else if (vsMax = aoQuery.$max)?
                 voQuery.pipeline.push $sort: "#{wrapReference vsMax}": -1
                 voQuery.pipeline.push $limit: 1
-                voQuery.pipeline.push $replaceRoot: "$#{wrapReference vsMax}"
+                voQuery.pipeline.push $project:
+                  _id: 0
+                  result: "$#{wrapReference vsMax}"
 
               else if (vsAvg = aoQuery.$avg)?
                 voQuery.pipeline.push $group:
                   _id : null
                   result: $avg: "$#{wrapReference vsAvg}"
-                voQuery.pipeline.push $replaceRoot: "$result"
+                voQuery.pipeline.push $project: _id: 0
 
               else
                 if (voReturn = aoQuery.$return)?
-                  if _.isString aoQuery.$return
-                    unless voReturn isnt '@doc'
+                  if _.isString voReturn
+                    if voReturn isnt '@doc'
                       voQuery.pipeline.push
-                        $replaceRoot: "$#{wrapReference voReturn}"
+                        $project:
+                          _id: 0
+                          "#{wrapReference voReturn}": 1
                   else if _.isObject voReturn
                     vhObj = {}
                     projectObj = {}
@@ -404,10 +411,8 @@ module.exports = (Module)->
                     voQuery.pipeline.push $project: projectObj
 
                   if aoQuery.$distinct
-                    voQuery.pipeline.push $project: _id : 0
                     voQuery.pipeline.push $group:
                       _id : '$$CURRENT'
-                    voQuery.pipeline.push $replaceRoot: "$_id"
 
           return voQuery
 
@@ -439,7 +444,9 @@ module.exports = (Module)->
               yield collection.find aoQuery.filter
             when 'remove'
               yield collection.deleteMany aoQuery.filter,
-                w: "majority", j: yes, wtimeout: 500
+                w: "majority"
+                j: yes
+                wtimeout: 500
               yield collection.find aoQuery.filter
 
           voCursor = MongoCursor.new @delegate, voNativeCursor
