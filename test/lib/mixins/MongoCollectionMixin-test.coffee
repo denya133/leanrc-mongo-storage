@@ -1,3 +1,5 @@
+fs                  = require 'fs'
+crypto              = require 'crypto'
 { expect, assert }  = require 'chai'
 sinon               = require 'sinon'
 _                   = require 'lodash'
@@ -24,6 +26,7 @@ createModuleClass = (root = __dirname) ->
 createCollectionClass = (Module) ->
   class Module::MongoCollection extends Module::Collection
     @inheritProtected()
+    @include Module::QueryableMixin
     @include Module::MongoCollectionMixin
     @module Module
   Module::MongoCollection.initialize()
@@ -49,13 +52,12 @@ describe 'MongoCollectionMixin', ->
     port: '27017'
     default_db: 'just_for_test'
     db: 'just_for_test'
+    dbGridFS: 'just_for_test_gridfs'
     collection: 'test_thames_travel'
 
   # db_url = "mongodb://localhost:27017/just_for_test?authSource=admin"
-  credentials = ''
   { username, password, host, port, default_db } = connectionData
-  if username and password
-    credentials =  "#{username}:#{password}@"
+  credentials = if username and password then "#{username}:#{password}@" else ''
   db_url = "mongodb://#{credentials}#{host}:#{port}/#{default_db}?authSource=admin"
 
   before ->
@@ -69,12 +71,12 @@ describe 'MongoCollectionMixin', ->
       __db = yield MongoClient.connect db_url
       dbCollection = yield __db.createCollection 'test_thames_travel'
       date = new Date()
-      yield dbCollection.save cid: 1, data: 'three', createdAt: date, updatedAt: date
+      yield dbCollection.save id: 'q1', cid: 1, data: 'three', createdAt: date, updatedAt: date
       date = new Date()
-      yield dbCollection.save cid: 2, data: 'men', createdAt: date, updatedAt: date
+      yield dbCollection.save id: 'w2', cid: 2, data: 'men', createdAt: date, updatedAt: date
       date = new Date Date.now() + 1000
-      yield dbCollection.save cid: 3, data: 'in', createdAt: date, updatedAt: date
-      yield dbCollection.save cid: 4, data: 'a boat', createdAt: date, updatedAt: date
+      yield dbCollection.save id: 'e3', cid: 3, data: 'in', createdAt: date, updatedAt: date
+      yield dbCollection.save id: 'r4', cid: 4, data: 'a boat', createdAt: date, updatedAt: date
       yield return
   after ->
     co ->
@@ -129,8 +131,10 @@ describe 'MongoCollectionMixin', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        collection = TestCollection.new()
-        assert.isTrue no
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        bucket = yield collection.bucket
+        assert.isTrue collection[TestCollection.instanceVariables['_bucket'].pointer]?
         yield return
 
   describe '#onRegister', ->
@@ -364,7 +368,7 @@ describe 'MongoCollectionMixin', ->
 
   # @TODO Нужно будет понипихать сюда больше проверок. Желательно реальных примеров query, и желательно сложных.
   describe '#parseFilter', ->
-    it 'Use method "parseFilter" for simple parsed query', ->
+    it 'Use the "parseFilter" method for simple parsed query', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -376,7 +380,7 @@ describe 'MongoCollectionMixin', ->
           operand: 'b'
         assert.deepEqual result, a: $eq: 'b'
         yield return
-    it 'Use method "parseFilter" for parsed query', ->
+    it 'Use the "parseFilter" method for parsed query', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -421,7 +425,7 @@ describe 'MongoCollectionMixin', ->
           ]
         ]
         yield return
-    it 'Use method "parseFilter" for parsed query with operator "$elemMatch" and implicitField:no', ->
+    it 'Use the "parseFilter" method for parsed query with operator "$elemMatch" and implicitField:no', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -444,7 +448,7 @@ describe 'MongoCollectionMixin', ->
           b: $eq: 'c'
           d: $eq: 2
         yield return
-    it 'Use method "parseFilter" for parsed query with operator "$elemMatch" and implicitField:yes', ->
+    it 'Use the "parseFilter" method for parsed query with operator "$elemMatch" and implicitField:yes', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -467,7 +471,7 @@ describe 'MongoCollectionMixin', ->
         yield return
 
   describe '#parseQuery', ->
-    it 'Check correctness logic of method "parseQuery" for "insert" record', ->
+    it 'Check correctness logic of the "parseQuery" method for "insert" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -487,6 +491,7 @@ describe 'MongoCollectionMixin', ->
           queryType: 'insert'
           snapshot:
             cid: 5
+            id: null
             rev: null
             type: 'Test::TestRecord'
             isHidden: no
@@ -494,19 +499,19 @@ describe 'MongoCollectionMixin', ->
             updatedAt: date.toISOString()
             deletedAt: null
             data: '!'
-        # assert.deepEqual result1, correctResult
-        # assert.deepEqual result2, correctResult
+        assert.deepEqual result1, correctResult
+        assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        res = yield nativeCollection.insertOne correctResult.snapshot,
-          w: "majority"
-          j: yes
-          wtimeout: 500
-        assert.strictEqual res.insertedCount, 1
-        res = yield nativeCollection.findOne cid: 5
-        assert.strictEqual res.data, '!'
+        # nativeCollection = yield collection.collection
+        # res = yield nativeCollection.insertOne correctResult.snapshot,
+        #   w: "majority"
+        #   j: yes
+        #   wtimeout: 500
+        # assert.strictEqual res.insertedCount, 1
+        # res = yield nativeCollection.findOne cid: 5
+        # assert.strictEqual res.data, '!'
         yield return
-    it 'Check correctness logic of method "parseQuery" for "update" record', ->
+    it 'Check correctness logic of the "parseQuery" method for "update" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -542,18 +547,18 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
-          multi: yes
-          w: "majority"
-          j: yes
-          wtimeout: 500
-        assert.strictEqual res.matchedCount, 1
-        assert.strictEqual res.modifiedCount, 1
-        res = yield nativeCollection.findOne correctResult.filter
-        assert.strictEqual res.data, '!!'
+        # nativeCollection = yield collection.collection
+        # res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
+        #   multi: yes
+        #   w: "majority"
+        #   j: yes
+        #   wtimeout: 500
+        # assert.strictEqual res.matchedCount, 1
+        # assert.strictEqual res.modifiedCount, 1
+        # res = yield nativeCollection.findOne correctResult.filter
+        # assert.strictEqual res.data, '!!'
         yield return
-    it 'Check correctness logic of method "parseQuery" for "replace" record', ->
+    it 'Check correctness logic of the "parseQuery" method for "replace" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -589,18 +594,18 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
-          multi: yes
-          w: "majority"
-          j: yes
-          wtimeout: 500
-        assert.strictEqual res.matchedCount, 1
-        assert.strictEqual res.modifiedCount, 1
-        res = yield nativeCollection.findOne correctResult.filter
-        assert.strictEqual res.data, '!!!'
+        # nativeCollection = yield collection.collection
+        # res = yield nativeCollection.updateMany correctResult.filter, $set: correctResult.snapshot,
+        #   multi: yes
+        #   w: "majority"
+        #   j: yes
+        #   wtimeout: 500
+        # assert.strictEqual res.matchedCount, 1
+        # assert.strictEqual res.modifiedCount, 1
+        # res = yield nativeCollection.findOne correctResult.filter
+        # assert.strictEqual res.data, '!!!'
         yield return
-    it 'Check correctness logic of method "parseQuery" for "remove" record', ->
+    it 'Check correctness logic of the "parseQuery" method for "remove" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -623,17 +628,17 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        res = yield nativeCollection.deleteMany correctResult.filter, $set: correctResult.snapshot,
-          w: "majority"
-          j: yes
-          wtimeout: 500
-        assert.strictEqual res.result.ok, 1
-        assert.strictEqual res.deletedCount, 1
-        res = yield nativeCollection.findOne correctResult.filter
-        assert.isFalse res?
+        # nativeCollection = yield collection.collection
+        # res = yield nativeCollection.deleteMany correctResult.filter, $set: correctResult.snapshot,
+        #   w: "majority"
+        #   j: yes
+        #   wtimeout: 500
+        # assert.strictEqual res.result.ok, 1
+        # assert.strictEqual res.deletedCount, 1
+        # res = yield nativeCollection.findOne correctResult.filter
+        # assert.isFalse res?
         yield return
-    it 'Check correctness logic of method "parseQuery" for "count" records', -> # Need mongo version >= 3.4.0
+    it 'Check correctness logic of the "parseQuery" method for "count" records', -> # Need mongo version >= 3.4.0
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -660,12 +665,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.deepEqual res, result: 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.deepEqual res, result: 2
         yield return
-    it 'Check correctness logic of method "parseQuery" for "sum" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "sum" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -696,12 +701,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.deepEqual res, result: 7 # 3 + 4
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.deepEqual res, result: 7 # 3 + 4
         yield return
-    it 'Check correctness logic of method "parseQuery" for "min" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "min" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -734,12 +739,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.deepEqual res, result: 3
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.deepEqual res, result: 3
         yield return
-    it 'Check correctness logic of method "parseQuery" for "max" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "max" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -772,12 +777,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.deepEqual res, result: 4
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.deepEqual res, result: 4
         yield return
-    it 'Check correctness logic of method "parseQuery" for "avg" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "avg" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -809,12 +814,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.deepEqual res, result: 3.5
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.deepEqual res, result: 3.5
         yield return
-    it 'Check correctness logic of method "parseQuery" for "sort" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "sort" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -848,12 +853,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res.cid, 4
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res.cid, 4
         yield return
-    it 'Check correctness logic of method "parseQuery" for "limit" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "limit" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -880,12 +885,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 1
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 1
         yield return
-    it 'Check correctness logic of method "parseQuery" for "offset" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "offset" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -912,12 +917,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res.cid, 4
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res.cid, 4
         yield return
-    it 'Check correctness logic of method "parseQuery" for "collect" records, with using "into"', ->
+    it 'Check correctness logic of the "parseQuery" method for "collect" records, with using "into"', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -957,12 +962,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 2
         yield return
-    it 'Check correctness logic of method "parseQuery" for "collect" records, without using "into"', ->
+    it 'Check correctness logic of the "parseQuery" method for "collect" records, without using "into"', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -1000,12 +1005,12 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 2
         yield return
-    it 'Check correctness logic of method "parseQuery" for "having" records', ->
+    it 'Check correctness logic of the "parseQuery" method for "having" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -1032,15 +1037,15 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res.cid, 2
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 1
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res.cid, 2
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 1
         yield return
-    it 'Check correctness logic of method "parseQuery" for simple format "return" records', ->
+    it 'Check correctness logic of the "parseQuery" method for simple format "return" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -1069,15 +1074,15 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res.data, 'in'
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res.data, 'in'
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 2
         yield return
-    it 'Check correctness logic of method "parseQuery" for complex format "return" records', ->
+    it 'Check correctness logic of the "parseQuery" method for complex format "return" records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -1108,15 +1113,15 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res.superdata, 'in'
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res.superdata, 'in'
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 2
         yield return
-    it 'Check correctness logic of method "parseQuery" for "return" with "distinct" format records', ->
+    it 'Check correctness logic of the "parseQuery" method for "return" with "distinct" format records', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
@@ -1149,121 +1154,355 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
-        nativeCollection = yield collection.collection
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.next()
-        assert.strictEqual res._id.data, 'a boat'
-        cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
-        res = yield cursor.toArray()
-        assert.strictEqual res.length, 2
+        # nativeCollection = yield collection.collection
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.next()
+        # assert.strictEqual res._id.data, 'a boat'
+        # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
+        # res = yield cursor.toArray()
+        # assert.strictEqual res.length, 2
         yield return
-  ###
 
   describe '#executeQuery', ->
-    it 'should send query to ArangoDB', ->
+    it 'Check correctness logic of the "executeQuery" method for "insert" record', ->
       co ->
-        class Test extends LeanRC
-          @inheritProtected()
-          @include ArangoExtension
-          @root __dirname
-        Test.initialize()
-        class ArangoCollection extends Test::Collection
-          @inheritProtected()
-          @include Test::QueryableMixin
-          @include Test::ArangoCollectionMixin
-          @module Test
-        ArangoCollection.initialize()
-        class SampleRecord extends Test::Record
-          @inheritProtected()
-          @module Test
-          @attribute data: String
-          @public init: Function,
-            default: ->
-              @super arguments...
-              @type = 'Test::SampleRecord'
-        SampleRecord.initialize()
-        collection = ArangoCollection.new 'TEST_COLLECTION',
-          delegate: SampleRecord
-          serializer: Test::Serializer
-        samples = yield collection.executeQuery '
-          FOR doc IN test_samples
-          SORT doc._key
-          RETURN doc
-        '
-        items = yield samples.toArray()
-        assert.lengthOf items, 4
-        for item in items
-          assert.instanceOf item, SampleRecord
-        items = yield collection.executeQuery '
-          FOR doc IN test_samples
-          FILTER doc.data == "a boat"
-          RETURN doc
-        '
-        item = yield items.first()
-        assert.equal item.data, 'a boat'
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query =
+          queryType: 'insert'
+          snapshot:
+            cid: 6
+            id: null
+            rev: null
+            type: 'Test::TestRecord'
+            isHidden: no
+            createdAt: date.toISOString()
+            updatedAt: date.toISOString()
+            deletedAt: null
+            data: '?'
+        result = yield collection.executeQuery query
+        resultArray = yield result.toArray()
+        assert.instanceOf resultArray[0], TestRecord
+        assert.strictEqual resultArray[0].cid, query.snapshot.cid
+        assert.strictEqual resultArray[0].data, query.snapshot.data
+        yield return
+    it 'Check correctness logic of the "executeQuery" method for "update" record', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query =
+          queryType: 'update'
+          filter: $and: [cid: $eq: 6]
+          snapshot:
+            cid: 6
+            id: null
+            rev: null
+            type: 'Test::TestRecord'
+            isHidden: no
+            createdAt: date.toISOString()
+            updatedAt: date.toISOString()
+            deletedAt: null
+            data: '??'
+        result = yield collection.executeQuery query
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray[0].cid, query.snapshot.cid
+        assert.strictEqual resultArray[0].data, query.snapshot.data
+        yield return
+    it 'Check correctness logic of the "executeQuery" method for "replace" record', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        query =
+          queryType: 'replace'
+          filter: $and: [cid: $eq: 6]
+          snapshot:
+            cid: 6
+            id: null
+            rev: null
+            type: 'Test::TestRecord'
+            isHidden: no
+            createdAt: date.toISOString()
+            updatedAt: date.toISOString()
+            deletedAt: null
+            data: '???'
+        result = yield collection.executeQuery query
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray[0].cid, query.snapshot.cid
+        assert.strictEqual resultArray[0].data, query.snapshot.data
+        yield return
+    it 'Check correctness logic of the "executeQuery" method for "remove" record', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        query =
+          queryType: 'remove'
+          filter: $and: [cid: $eq: 6]
+        result = yield collection.executeQuery query
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray.length, 0
+        yield return
+    it 'Check correctness logic of the "parseQuery" method for "find" records', -> # Need mongo version >= 3.4.0
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        query =
+          queryType: 'find'
+          pipeline: [
+            $match: $and: [cid: $gt: 2]
+          ,
+            $sort:
+              cid: -1
+              data: 1
+          ,
+            $limit: 1
+          ]
+        result = yield collection.executeQuery query
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray[0].cid, 4
+        assert.strictEqual resultArray[0].data, 'a boat'
         yield return
 
-  ####
-  ###
+  describe '#take', ->
+    it 'Check correctness logic of the "take" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        result = yield collection.take 'r4'
+        assert.instanceOf result, TestRecord
+        assert.strictEqual result.cid, 4
+        assert.strictEqual result.data, 'a boat'
+        yield return
+
+  describe '#takeMany', ->
+    it 'Check correctness logic of the "takeMany" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        result = yield collection.takeMany ['e3', 'r4']
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray.length, 2
+        assert.strictEqual resultArray[1].cid, 4
+        assert.strictEqual resultArray[1].data, 'a boat'
+        yield return
+
+  describe '#takeAll', ->
+    it 'Check correctness logic of the "takeAll" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        result = yield collection.takeAll()
+        resultArray = yield result.toArray()
+        assert.strictEqual resultArray.length, 4
+        assert.strictEqual resultArray[1].cid, 2
+        assert.strictEqual resultArray[1].data, 'men'
+        yield return
+
+  describe '#includes', ->
+    it 'Check correctness logic of the "includes" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        result = yield collection.includes 'w2'
+        assert.isTrue result
+        result = yield collection.includes 'w3'
+        assert.isFalse result
+        yield return
+
+  describe '#length', ->
+    it 'Check correctness logic of the "length" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        result = yield collection.length()
+        assert.strictEqual result, 4
+        yield return
 
   describe '#push', ->
     it 'Check correctness logic of the "push" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        collection = Test::MongoCollection.new()
-        assert.isTrue collection?
-        assert.instanceOf collection, Test::MongoCollection
-        yield return
-
-  describe '#remove', ->
-    it 'Check correctness logic of the "hasNext" function', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        collection = Test::MongoCollection.new()
-        assert.isTrue collection?
-        assert.instanceOf collection, Test::MongoCollection
-        yield return
-
-  describe '#take', ->
-    it 'Check correctness logic of the "hasNext" function', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        collection = Test::MongoCollection.new()
-        assert.isTrue collection?
-        assert.instanceOf collection, Test::MongoCollection
-        yield return
-
-  describe '#takeMany', ->
-    it 'Check correctness logic of the "hasNext" function', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        collection = Test::MongoCollection.new()
-        assert.isTrue collection?
-        assert.instanceOf collection, Test::MongoCollection
-        yield return
-
-  describe '#takeAll', ->
-    it 'Check correctness logic of the "hasNext" function', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        collection = Test::MongoCollection.new()
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
+        result = yield collection.push testRecord
+        assert.isTrue result
+        insertedResult = yield collection.take 'u7'
+        assert.strictEqual insertedResult.cid, 7
+        assert.strictEqual insertedResult.data, ' :)'
         yield return
 
   describe '#override', ->
-  describe '#patch', ->
-  describe '#includes', ->
-  describe '#length', ->
-  describe '#operatorsMap', ->
-  describe '#parseFilter', ->
-  describe '#parseQuery', ->
-  describe '#executeQuery', ->
-  describe '#createFileWriteStream', ->
-  describe '#createFileReadStream', ->
-  describe '#fileExists', ->
+    it 'Check correctness logic of the "override" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        testRecord = yield collection.take 'u7'
+        assert.isTrue testRecord?
+        testRecord.data = ' ;)'
+        assert.strictEqual testRecord.data, ' ;)'
+        result = yield collection.override testRecord.id, testRecord
+        resultObject = yield result.first()
+        assert.strictEqual resultObject.cid, 7
+        assert.strictEqual resultObject.data, ' ;)'
+        overridedResult = yield collection.take 'u7'
+        assert.strictEqual overridedResult.cid, 7
+        assert.strictEqual overridedResult.data, ' ;)'
+        yield return
 
-  ###
+  describe '#patch', ->
+    it 'Check correctness logic of the "patch" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        date = new Date()
+        testRecord = yield collection.take 'u7'
+        assert.isTrue testRecord?
+        testRecord.data = ' ;-)'
+        assert.strictEqual testRecord.data, ' ;-)'
+        result = yield collection.override testRecord.id, testRecord
+        resultObject = yield result.first()
+        assert.strictEqual resultObject.cid, 7
+        assert.strictEqual resultObject.data, ' ;-)'
+        patchedResult = yield collection.take 'u7'
+        assert.strictEqual patchedResult.cid, 7
+        assert.strictEqual patchedResult.data, ' ;-)'
+        yield return
+
+  describe '#remove', ->
+    it 'Check correctness logic of the "remove" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        notDeletedResult = yield collection.take 'u7'
+        assert.isTrue notDeletedResult?
+        result = yield collection.remove notDeletedResult.id
+        assert.isTrue result
+        deletedResult = yield collection.take 'u7'
+        assert.isFalse deletedResult?
+        yield return
+
+  describe '#createFileWriteStream', ->
+    it 'Check correctness logic of the "createFileWriteStream" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        { db: dbName, collection: collectionName } = connectionData
+        connection = yield collection.connection
+        voDB = yield connection.db dbName
+        filesCollection = yield voDB.collection "#{collectionName}.files"
+        chunksCollection = yield voDB.collection "#{collectionName}.chunks"
+
+        readFileStream = fs.createReadStream "#{__dirname}/test-data/gridfs-test"
+        licenseFile = fs.readFileSync "#{__dirname}/test-data/gridfs-test"
+        stream = yield collection.createFileWriteStream _id: 'license.test'
+        id = stream.id
+        promise = LeanRC::Promise.new (resolve, reject)-> stream.once 'finish', resolve
+        readFileStream.pipe stream
+        yield promise
+
+        chunksQuery = yield chunksCollection.find files_id: id
+
+        # Get all the chunks
+        docs = yield chunksQuery.toArray()
+        assert.strictEqual docs.length, 1
+        assert.strictEqual docs[0].data.toString('hex'), licenseFile.toString('hex')
+
+        filesQuery = yield filesCollection.find _id: id
+
+        docs = yield filesQuery.toArray()
+        assert.strictEqual docs.length, 1
+
+        hash = crypto.createHash 'md5'
+        hash.update licenseFile
+        assert.strictEqual docs[0].md5, hash.digest('hex')
+
+        # make sure we created indexes
+        indexes = yield filesCollection.listIndexes().toArray()
+        assert.strictEqual indexes.length, 2
+        assert.strictEqual indexes[1].name, 'filename_1_uploadDate_1'
+
+        indexes = yield chunksCollection.listIndexes().toArray()
+        assert.strictEqual indexes.length, 2
+        assert.strictEqual indexes[1].name, 'files_id_1_n_1'
+        yield return
+
+  describe '#createFileReadStream', ->
+    it 'Check correctness logic of the "createFileWriteStream" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+
+        readFileStream = fs.createReadStream "#{__dirname}/test-data/gridfs-test"
+        licenseFile = fs.readFileSync "#{__dirname}/test-data/gridfs-test"
+        stream = yield collection.createFileWriteStream _id: 'license.test'
+        promise = LeanRC::Promise.new (resolve, reject)-> stream.once 'finish', resolve
+        readFileStream.pipe stream
+        yield promise
+
+        readStream = yield collection.createFileReadStream _id: 'license.test'
+        gotData = no
+        buffer = Buffer.from []
+        promise = LeanRC::Promise.new (resolve, reject)->
+          readStream.once 'end', resolve
+          readStream.on 'data', (chunk)->
+            gotData = yes
+            buffer = Buffer.concat [buffer, chunk], buffer.length + chunk.length
+        yield promise
+        assert.include buffer.toString('utf8'), 'TERMS AND CONDITIONS'
+        assert.isTrue gotData
+        yield return
+
+
+  describe '#fileExists', ->
+    it 'Check correctness logic of the "createFileWriteStream" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+
+        readFileStream = fs.createReadStream "#{__dirname}/test-data/gridfs-test"
+        licenseFile = fs.readFileSync "#{__dirname}/test-data/gridfs-test"
+        stream = yield collection.createFileWriteStream _id: 'license.test'
+        promise = LeanRC::Promise.new (resolve, reject)-> stream.once 'finish', resolve
+        readFileStream.pipe stream
+        yield promise
+        assert.isTrue yield collection.fileExists _id: 'license.test'
+        assert.isFalse yield collection.fileExists _id: 'license.test11'
+        yield return

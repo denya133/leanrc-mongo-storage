@@ -39,9 +39,9 @@ module.exports = (Module)->
 
       @implements QueryableMixinInterface
 
-      cpoConnection = @private @static connection: PromiseInterface
-      ipoCollection = @private collection: PromiseInterface
-      ipoBucket     = @private bucket: PromiseInterface
+      cpoConnection       = @private @static connection: PromiseInterface
+      ipoCollection       = @private collection: PromiseInterface
+      ipoBucket           = @private bucket: PromiseInterface
 
       @public connection: PromiseInterface,
         get: ->
@@ -87,68 +87,68 @@ module.exports = (Module)->
             .insert aoRecord
             .into @collectionFullName()
           yield @query voQuery
-          return yes
+          return yield Module::Promise.resolve yes
 
       @public @async remove: Function,
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $eq: id
+            .filter '@doc.id': $eq: id
             .remove()
           yield @query voQuery
-          return yes
+          return yield Module::Promise.resolve yes
 
       @public @async take: Function,
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $eq: id
+            .filter '@doc.id': $eq: id
             .return '@doc'
           cursor = yield @query voQuery
-          cursor.first()
+          return yield cursor.first()
 
       @public @async takeMany: Function,
         default: (ids)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $in: ids
+            .filter '@doc.id': $in: ids
             .return '@doc'
-          yield @query voQuery
+          return yield @query voQuery
 
       @public @async takeAll: Function,
         default: ->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
             .return '@doc'
-          yield @query voQuery
+          return yield @query voQuery
 
       @public @async override: Function,
         default: (id, aoRecord)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $eq: id
+            .filter '@doc.id': $eq: id
             .replace aoRecord
             .into @collectionFullName()
-          yield @query voQuery
+          return yield @query voQuery
 
       @public @async patch: Function,
         default: (id, aoRecord)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $eq: id
+            .filter '@doc.id': $eq: id
             .update aoRecord
             .into @collectionFullName()
-          yield @query voQuery
+          return yield @query voQuery
 
       @public @async includes: Function,
         default: (id)->
           voQuery = Query.new()
             .forIn '@doc': @collectionFullName()
-            .filter '@doc._id': $eq: id
+            .filter '@doc.id': $eq: id
             .limit 1
             .return '@doc'
           cursor = yield @query voQuery
-          cursor.hasNext()
+          return yield cursor.hasNext()
 
       @public @async length: Function,
         default: ->
@@ -156,7 +156,7 @@ module.exports = (Module)->
             .forIn '@doc': @collectionFullName()
             .count()
           cursor = yield @query voQuery
-          cursor.first()
+          return yield Module::Promise.resolve (yield cursor.first()).result
 
       wrapReference = (value)->
         if _.isString(value)
@@ -447,9 +447,11 @@ module.exports = (Module)->
                 w: "majority"
                 j: yes
                 wtimeout: 500
+              # Строка ниже всегда будет возращать пустой массив.
+              # Нужна для того, чтобы была общая логика после свича (создание курсора)
               yield collection.find aoQuery.filter
 
-          voCursor = MongoCursor.new @delegate, voNativeCursor
+          voCursor = MongoCursor.new @, voNativeCursor
           return voCursor
 
       @public @async createFileWriteStream: Function,
@@ -459,10 +461,6 @@ module.exports = (Module)->
           # console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
           bucket = yield @bucket
           yield return bucket.openUploadStream opts._id, {}
-      ###
-        writeStream = yield ...
-        write.pipe ...
-      ###
 
       @public @async createFileReadStream: Function,
         args: [Object]
