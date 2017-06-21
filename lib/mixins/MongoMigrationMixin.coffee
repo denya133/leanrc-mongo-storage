@@ -60,68 +60,77 @@ module.exports = (Module)->
       @inheritProtected()
 
       @public @async createCollection: Function,
-        default: (name, options)->
-          qualifiedName = @collection.collectionFullName name
-          unless db._collection qualifiedName
-            db._createDocumentCollection qualifiedName, options
+        default: (collectionName, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          yield voDB.createCollection collectionName, options
           yield return
 
       @public @async createEdgeCollection: Function,
-        default: (collection_1, collection_2, options)->
-          qualifiedName = @collection.collectionFullName "#{collection_1}_#{collection_2}"
-          unless db._collection qualifiedName
-            db._createEdgeCollection qualifiedName, options
+        default: (collectionName1, collectionName2, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          yield voDB.createCollection "#{collectionName1}_#{collectionName2}", options
           yield return
 
       @public @async addField: Function,
-        default: (collection_name, field_name, options)->
-          qualifiedName = @collection.collectionFullName collection_name
+        default: (collectionName, fieldName, options = {})->
           if options.default?
             if _.isNumber(options.default) or _.isBoolean(options.default)
               initial = options.default
             else if _.isDate options.default
               initial = options.default.toISOString()
             else if _.isString options.default
-              initial = "'#{options.default}'"
+              initial = "#{options.default}"
             else
-              initial = 'null'
+              initial = null
           else
-            initial = 'null'
-          db._query "
-            FOR doc IN #{qualifiedName}
-              UPDATE doc._key WITH {#{field_name}: #{initial}} IN #{qualifiedName}
-          "
+            initial = null
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.updateMany {},
+            $set:
+              "#{fieldName}": initial
+          , w: 1
           yield return
 
       @public @async addIndex: Function,
-        default: (collection_name, field_names, options)->
-          qualifiedName = @collection.collectionFullName collection_name
-          db._collection(qualifiedName).ensureIndex
-            type: options.type
-            fields: field_names
+        default: (collectionName, fieldNames, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          indexFields = {}
+          fieldNames.forEach (fieldName)->
+            indexFields[fieldName] = 1
+          yield collection.ensureIndex indexFields,
             unique: options.unique
             sparse: options.sparse
+            background: options.background
+            name: options.name
           yield return
 
       @public @async addTimestamps: Function,
-        default: (collection_name, options)->
-          qualifiedName = @collection.collectionFullName collection_name
-          db._query "
-            FOR doc IN #{qualifiedName}
-              UPDATE doc._key
-                WITH {createdAt: null, updatedAt: null, deletedAt: null}
-              IN #{qualifiedName}
-          "
+        default: (collectionName, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.updateMany {},
+            $set:
+              createdAt: null
+              updatedAt: null
+              deletedAt: null
+          , w: 1
           yield return
 
       @public @async changeCollection: Function,
         default: (name, options)->
-          qualifiedName = @collection.collectionFullName collection_name
+          qualifiedName = @collection.collectionFullName collectionName
           db._collection(qualifiedName).properties options
           yield return
 
       @public @async changeField: Function,
-        default: (collection_name, field_name, options)->
+        default: (collectionName, fieldName, options)->
           {
             json
             binary
@@ -141,35 +150,35 @@ module.exports = (Module)->
           } = Module::Migration::SUPPORTED_TYPES
           typeCast = switch options.type
             when boolean
-              "TO_BOOL(doc.#{field_name})"
+              "TO_BOOL(doc.#{fieldName})"
             when decimal, float, integer
-              "TO_NUMBER(doc.#{field_name})"
+              "TO_NUMBER(doc.#{fieldName})"
             when string, text, primary_key, binary
-              "TO_STRING(JSON_STRINGIFY(doc.#{field_name}))"
+              "TO_STRING(JSON_STRINGIFY(doc.#{fieldName}))"
             when array
-              "TO_ARRAY(doc.#{field_name})"
+              "TO_ARRAY(doc.#{fieldName})"
             when json, hash
-              "JSON_PARSE(TO_STRING(doc.#{field_name}))"
+              "JSON_PARSE(TO_STRING(doc.#{fieldName}))"
             when date, datetime
-              "DATE_ISO8601(doc.#{field_name})"
+              "DATE_ISO8601(doc.#{fieldName})"
             when time, timestamp
-              "DATE_TIMESTAMP(doc.#{field_name})"
-          qualifiedName = @collection.collectionFullName collection_name
+              "DATE_TIMESTAMP(doc.#{fieldName})"
+          qualifiedName = @collection.collectionFullName collectionName
           db._query "
             FOR doc IN #{qualifiedName}
               UPDATE doc._key
-                WITH {#{field_name}: #{typeCast}}
+                WITH {#{fieldName}: #{typeCast}}
               IN #{qualifiedName}
           "
           yield return
 
       @public @async renameField: Function,
-        default: (collection_name, field_name, new_field_name)->
-          qualifiedName = @collection.collectionFullName collection_name
+        default: (collectionName, fieldName, ew_dfieldName)->
+          qualifiedName = @collection.collectionFullName collectionName
           db._query "
             FOR doc IN #{qualifiedName}
-              LET doc_with_n_field = MERGE(doc, {#{new_field_name}: doc.#{field_name}})
-              LET doc_without_o_field = UNSET(doc_with_new_field, '#{field_name}')
+              LET doc_with_n_field = MERGE(doc, {#{ew_dfieldName}: doc.#{fieldName}})
+              LET doc_without_o_field = UNSET(doc_with_new_field, '#{fieldName}')
               REPLACE doc._key
                 WITH doc_without_o_field
               IN #{qualifiedName}
@@ -177,60 +186,75 @@ module.exports = (Module)->
           yield return
 
       @public @async renameIndex: Function,
-        default: (collection_name, old_name, new_name)->
+        default: (collectionName, old_name, new_name)->
           # not supported in ArangoDB because index has not name
           yield return
 
       @public @async renameCollection: Function,
-        default: (collection_name, old_name, new_name)->
-          qualifiedName = @collection.collectionFullName collection_name
+        default: (collectionName, old_name, new_name)->
+          qualifiedName = @collection.collectionFullName collectionName
           newQualifiedName = @collection.collectionFullName new_name
           db._collection(qualifiedName).rename newQualifiedName
           yield return
 
       @public @async dropCollection: Function,
-        default: (name)->
-          qualifiedName = @collection.collectionFullName name
-          unless db._collection qualifiedName
-            db._drop qualifiedName
+        default: (collectionName)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          if (yield voDB.listCollections(name: collectionName).toArray()).length isnt 0
+            yield voDB.dropCollection collectionName
           yield return
 
       @public @async dropEdgeCollection: Function,
-        default: (collection_1, collection_2)->
-          qualifiedName = @collection.collectionFullName "#{collection_1}_#{collection_2}"
-          unless db._collection qualifiedName
-            db._drop qualifiedName
+        default: (collectionName1, collectionName2)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collectionName = "#{collectionName1}_#{collectionName2}"
+          if (yield voDB.listCollections(name: collectionName).toArray()).length isnt 0
+            yield voDB.dropCollection collectionName
           yield return
 
       @public @async removeField: Function,
-        default: (collection_name, field_name)->
-          qualifiedName = @collection.collectionFullName collection_name
-          db._query "
-            FOR doc IN #{qualifiedName}
-              LET doc_without_f = UNSET(doc, '#{field_name}')
-              REPLACE doc._key WITH doc_without_f IN #{qualifiedName}
-          "
+        default: (collectionName, fieldName)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.updateMany {},
+            $unset:
+              "#{fieldName}": ''
+          , w: 1
           yield return
 
       @public @async removeIndex: Function,
-        default: (collection_name, field_names, options)->
-          qualifiedName = @collection.collectionFullName collection_name
-          index = db._collection(qualifiedName).ensureIndex
-            type: options.type
-            fields: field_names
-            unique: options.unique
-            sparse: options.sparse
-          db._collection(qualifiedName).dropIndex index
+        default: (collectionName, fieldNames, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          indexName = options.name
+          unless indexName?
+            indexFields = {}
+            fieldNames.forEach (fieldName)->
+              indexFields[fieldName] = 1
+            indexName = yield collection.ensureIndex indexFields,
+              unique: options.unique
+              sparse: options.sparse
+              background: options.background
+              name: options.name
+          if collection.indexExists indexName
+            yield collection.dropIndex indexName
           yield return
 
       @public @async removeTimestamps: Function,
-        default: (collection_name, options)->
-          qualifiedName = @collection.collectionFullName collection_name
-          db._query "
-            FOR doc IN #{qualifiedName}
-              LET new_doc = UNSET(doc, 'createdAt', 'updatedAt', 'deletedAt')
-              REPLACE doc._key WITH new_doc IN #{qualifiedName}
-          "
+        default: (collectionName, options)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.updateMany {},
+            $unset:
+              createdAt: null
+              updatedAt: null
+              deletedAt: null
+          , w: 1
           yield return
 
 
