@@ -499,6 +499,7 @@ describe 'MongoCollectionMixin', ->
             updatedAt: date.toISOString()
             deletedAt: null
             data: '!'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -544,6 +545,7 @@ describe 'MongoCollectionMixin', ->
             updatedAt: date.toISOString()
             deletedAt: null
             data: '!!'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -591,6 +593,7 @@ describe 'MongoCollectionMixin', ->
             updatedAt: date.toISOString()
             deletedAt: null
             data: '!!!'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -625,6 +628,7 @@ describe 'MongoCollectionMixin', ->
         correctResult =
           queryType: 'remove'
           filter: $and: [cid: $eq: 5]
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -662,6 +666,7 @@ describe 'MongoCollectionMixin', ->
             $count: 'result'
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -698,6 +703,7 @@ describe 'MongoCollectionMixin', ->
             $project: _id: 0
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -736,6 +742,7 @@ describe 'MongoCollectionMixin', ->
               result: "$cid"
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -774,6 +781,7 @@ describe 'MongoCollectionMixin', ->
               result: "$cid"
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -811,6 +819,7 @@ describe 'MongoCollectionMixin', ->
               _id: 0
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -850,6 +859,7 @@ describe 'MongoCollectionMixin', ->
               data: 1
           ]
           queryType: 'find'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -882,6 +892,7 @@ describe 'MongoCollectionMixin', ->
             $limit: 1
           ]
           queryType: 'find'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -914,6 +925,7 @@ describe 'MongoCollectionMixin', ->
             $skip: 1
           ]
           queryType: 'find'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -959,6 +971,7 @@ describe 'MongoCollectionMixin', ->
                 updatedAt: '$updatedAt'
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1002,6 +1015,7 @@ describe 'MongoCollectionMixin', ->
                 updatedAt: '$updatedAt'
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1034,6 +1048,7 @@ describe 'MongoCollectionMixin', ->
             $match: $and: [cid: $lt: 3]
           ]
           queryType: 'find'
+          isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1071,6 +1086,7 @@ describe 'MongoCollectionMixin', ->
               data: 1
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1110,6 +1126,7 @@ describe 'MongoCollectionMixin', ->
               superdata: 1
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1151,6 +1168,7 @@ describe 'MongoCollectionMixin', ->
             $group: _id: "$$CURRENT"
           ]
           queryType: 'find'
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -1407,8 +1425,10 @@ describe 'MongoCollectionMixin', ->
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         notDeletedResult = yield collection.take 'u7'
         assert.isTrue notDeletedResult?
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         result = yield collection.remove notDeletedResult.id
         assert.isTrue result
+        collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         deletedResult = yield collection.take 'u7'
         assert.isFalse deletedResult?
         yield return

@@ -125,8 +125,7 @@ module.exports = (Module)->
 
       @public @async changeCollection: Function,
         default: (name, options)->
-          qualifiedName = @collection.collectionFullName collectionName
-          db._collection(qualifiedName).properties options
+          # not supported in MongoDB because a collection can't been modified
           yield return
 
       @public @async changeField: Function,
@@ -148,53 +147,52 @@ module.exports = (Module)->
             array
             hash
           } = Module::Migration::SUPPORTED_TYPES
-          typeCast = switch options.type
-            when boolean
-              "TO_BOOL(doc.#{fieldName})"
-            when decimal, float, integer
-              "TO_NUMBER(doc.#{fieldName})"
-            when string, text, primary_key, binary
-              "TO_STRING(JSON_STRINGIFY(doc.#{fieldName}))"
-            when array
-              "TO_ARRAY(doc.#{fieldName})"
-            when json, hash
-              "JSON_PARSE(TO_STRING(doc.#{fieldName}))"
-            when date, datetime
-              "DATE_ISO8601(doc.#{fieldName})"
-            when time, timestamp
-              "DATE_TIMESTAMP(doc.#{fieldName})"
-          qualifiedName = @collection.collectionFullName collectionName
-          db._query "
-            FOR doc IN #{qualifiedName}
-              UPDATE doc._key
-                WITH {#{fieldName}: #{typeCast}}
-              IN #{qualifiedName}
-          "
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          cursor = yield collection.find().batchSize(1)
+          while yield cursor.hasNext()
+            document = yield cursor.next()
+            newValue = switch options.type
+              when boolean
+                Boolean document[fieldName]
+              when decimal, float, integer
+                Number document[fieldName]
+              when string, text, primary_key, binary, array
+                JSON.stringify document[fieldName]
+              when json, hash
+                JSON.parse String document[fieldName]
+              when date, datetime
+                (new Date document[fieldName]).toISOString()
+              when time, timestamp
+                Number new Date document[fieldName]
+            yield collection.updateOne
+              _id: document._id
+            ,
+              $set: "#{fieldName}": newValue
           yield return
 
       @public @async renameField: Function,
-        default: (collectionName, fieldName, ew_dfieldName)->
-          qualifiedName = @collection.collectionFullName collectionName
-          db._query "
-            FOR doc IN #{qualifiedName}
-              LET doc_with_n_field = MERGE(doc, {#{ew_dfieldName}: doc.#{fieldName}})
-              LET doc_without_o_field = UNSET(doc_with_new_field, '#{fieldName}')
-              REPLACE doc._key
-                WITH doc_without_o_field
-              IN #{qualifiedName}
-          "
+        default: (collectionName, oldFieldName, newFieldName)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.updateMany {},
+            $rename:
+              "#{oldFieldName}": newFieldName
           yield return
 
       @public @async renameIndex: Function,
-        default: (collectionName, old_name, new_name)->
-          # not supported in ArangoDB because index has not name
+        default: (collectionName, oldIndexName, newIndexName)->
+          # not supported in MongoDB because a index can't been modified
           yield return
 
       @public @async renameCollection: Function,
-        default: (collectionName, old_name, new_name)->
-          qualifiedName = @collection.collectionFullName collectionName
-          newQualifiedName = @collection.collectionFullName new_name
-          db._collection(qualifiedName).rename newQualifiedName
+        default: (collectionName, newCollectionName)->
+          {db: dbName} = @collection.getData()
+          voDB = yield (yield @collection.connection).db dbName
+          collection = yield voDB.collection collectionName
+          yield collection.rename newCollectionName
           yield return
 
       @public @async dropCollection: Function,
@@ -240,7 +238,7 @@ module.exports = (Module)->
               sparse: options.sparse
               background: options.background
               name: options.name
-          if collection.indexExists indexName
+          if yield collection.indexExists indexName
             yield collection.dropIndex indexName
           yield return
 

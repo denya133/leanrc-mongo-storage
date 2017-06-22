@@ -25,7 +25,7 @@ module.exports = (Module)->
       get: ()->
         @[ipoCursor].isClosed()
 
-    @public setCursor: Function,
+    @public setIterable: Function,
       args: [ANY]
       return: CursorInterface
       default: (aoCursor)->
@@ -38,21 +38,20 @@ module.exports = (Module)->
         return @
 
     @public @async toArray: Function,
-      default: (acRecord = null)->
+      default: ->
         while yield @hasNext()
-          yield @next acRecord
+          yield @next()
 
     @public @async next: Function,
-      default: (acRecord = null)->
-        acRecord ?= @[ipoCollection]?.delegate
+      default: ->
         data = yield @[ipoCursor].next()
-        if acRecord?
-          if data?
-            acRecord.new data
+        switch
+          when not data?
+            yield return data
+          when @[ipoCollection]?
+            yield return @[ipoCollection]?.normalize data
           else
-            data
-        else
-          data
+            yield return data
 
     @public @async hasNext: Function,
       default: -> yield not @isClosed and (yield @[ipoCursor].hasNext())
@@ -64,33 +63,33 @@ module.exports = (Module)->
       default: -> yield @[ipoCursor].count yes
 
     @public @async forEach: Function,
-      default: (lambda, acRecord = null)->
+      default: (lambda)->
         index = 0
         try
           while yield @hasNext()
-            yield lambda (yield @next acRecord), index++
+            yield lambda (yield @next()), index++
           return
         catch err
           yield @close()
           throw err
 
     @public @async map: Function,
-      default: (lambda, acRecord = null)->
+      default: (lambda)->
         index = 0
         try
           while yield @hasNext()
-            yield lambda (yield @next acRecord), index++
+            yield lambda (yield @next()), index++
         catch err
           yield @close()
           throw err
 
     @public @async filter: Function,
-      default: (lambda, acRecord = null)->
+      default: (lambda)->
         index = 0
         records = []
         try
           while yield @hasNext()
-            record = yield @next acRecord
+            record = yield @next()
             if yield lambda record, index++
               records.push record
           records
@@ -99,12 +98,12 @@ module.exports = (Module)->
           throw err
 
     @public @async find: Function,
-      default: (lambda, acRecord = null)->
+      default: (lambda)->
         index = 0
         _record = null
         try
           while yield @hasNext()
-            record = yield @next acRecord
+            record = yield @next()
             if yield lambda record, index++
               _record = record
               break
@@ -114,15 +113,16 @@ module.exports = (Module)->
           throw err
 
     @public @async compact: Function,
-      default: (acRecord = null)->
-        acRecord ?= @[ipoCollection]?.delegate
-        index = 0
+      default: ()->
         records = []
         try
           while yield @hasNext()
             rawRecord = yield @[ipoCursor].next()
             unless _.isEmpty rawRecord
-              record = acRecord.new rawRecord
+              record = if @[ipoCollection]?
+                @[ipoCollection].normalize rawResult
+              else
+                rawResult
               records.push record
           records
         catch err
@@ -130,32 +130,29 @@ module.exports = (Module)->
           throw err
 
     @public @async reduce: Function,
-      default: (lambda, initialValue, acRecord = null)->
+      default: (lambda, initialValue)->
         try
           index = 0
           _initialValue = initialValue
           while yield @hasNext()
-            _initialValue = yield lambda _initialValue, (yield @next acRecord), index++
+            _initialValue = yield lambda _initialValue, (yield @next()), index++
           _initialValue
         catch err
           yield @close()
           throw err
 
     @public @async first: Function,
-      default: (acRecord = null)->
-        if @isClosed
-          throw new Error "You can't use method \"first\" twice on the one cursor."
-        result = null
+      default: ()->
         try
-          if yield @hasNext()
-            result = yield @next acRecord
+          result = if yield @hasNext()
+            yield @next()
           else
             null
           yield @close()
+          yield return result
         catch err
           yield @close()
           throw err
-        yield return result
 
     @public @static @async restoreObject: Function,
       default: ->
@@ -168,7 +165,7 @@ module.exports = (Module)->
         yield return
 
     @public init: Function,
-      default: (aoCollection, aoCursor = null)->
+      default: (aoCollection = null, aoCursor = null)->
         @super arguments...
         @[ipoCollection] = aoCollection
         @[ipoCursor] = aoCursor

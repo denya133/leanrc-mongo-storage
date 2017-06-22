@@ -74,7 +74,8 @@ describe 'MongoMigrationMixin', ->
   after ->
     co ->
       yield __db.dropCollection connectionData.collection
-      __db.close()
+      yield __db.dropDatabase()
+      yield __db.close()
       yield return
 
   describe '.new', ->
@@ -171,16 +172,12 @@ describe 'MongoMigrationMixin', ->
 
         yield migration.up()
         assert.isTrue spyAddField.calledWith testCollectionName, 'data1', default: 'testdata1'
-        testCollection = TestCollection.new testCollectionName,
-          Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        assert.strictEqual (yield testCollection.take 'u7').data1, 'testdata1'
+        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 'u7').data1, 'testdata1'
 
         spyRemoveField = sinon.spy migration, 'removeField'
         yield migration.down()
         assert.isTrue spyRemoveField.calledWith testCollectionName, 'data1'
-        testCollection = TestCollection.new testCollectionName,
-          Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        assert.isFalse (yield testCollection.take 'u7').data1?
+        assert.isFalse (yield (yield __db.collection testCollectionName).findOne id: 'u7').data1?
         yield return
 
   describe '#addTimestamps', ->
@@ -246,6 +243,134 @@ describe 'MongoMigrationMixin', ->
         assert.isTrue spyRemoveIndex.calledWith testCollectionName
         assert.isFalse yield (yield __db.collection testCollectionName).indexExists 'testIndex'
         yield (yield __db.collection testCollectionName).insertOne id: 'u77', cid: 77, data: ' :)'
+        yield return
+
+  describe '#changeField', ->
+    it 'Check correctness logic of the "changeField" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        testCollectionName = 'TestCollectionChangeField1'
+        testCollection = yield __db.collection testCollectionName
+        yield testCollection.insertOne id: 1, cid: 'q1', data: 1, createdAt: new Date()
+        yield testCollection.insertOne id: 2, cid: 'w2', data: '12', createdAt: new Date()
+        yield testCollection.insertOne id: 3, cid: 'e3', data: {val: 123}, createdAt: new Date()
+        yield testCollection.insertOne id: 4, cid: 'r4', data: [1234], createdAt: new Date()
+        yield testCollection.insertOne id: 5, cid: 't5', data: [{val: 12345}], createdAt: new Date()
+        yield testCollection.insertOne id: 6, cid: 'y6', data: false, createdAt: new Date()
+        yield testCollection.insertOne id: 7, cid: 'u7', data: 'false', createdAt: new Date()
+        yield testCollection.insertOne id: 8, cid: 'i8', data: null, createdAt: new Date()
+
+        TestMigration = createMigrationClass Test
+        TestMigration.change ()-> @changeField testCollectionName, 'data', type: TestMigration::SUPPORTED_TYPES.boolean
+        collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
+        migration = yield collection.build {}
+
+        spyChangeCollection = sinon.spy migration, 'changeField'
+        yield migration.up()
+        assert.isTrue spyChangeCollection.calledWith testCollectionName, 'data', type: TestMigration::SUPPORTED_TYPES.boolean
+        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 7).data.constructor, Boolean
+        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 8).data.constructor, Boolean
+
+        yield migration.down() # Вызывает changeField еще раз, с темы же параметрами что и в первый раз.
+        assert.isTrue spyChangeCollection.calledTwice
+        yield return
+
+  describe '#renameField', ->
+    it 'Check correctness logic of the "renameField" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestRecord = createRecordClass Test
+        testCollectionName = 'TestCollection1'
+        testCollection = TestCollection.new testCollectionName,
+          Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
+        date = new Date()
+        testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
+        yield testCollection.push testRecord
+
+        TestMigration = createMigrationClass Test
+        TestMigration.change ()-> @renameField testCollectionName, 'data', 'data1'
+        collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate: TestMigration}, connectionData
+        migration = yield collection.build {}
+
+        spyRenameField = sinon.spy migration, 'renameField'
+        yield migration.up()
+        assert.isTrue spyRenameField.calledWith testCollectionName, 'data', 'data1'
+        result = yield (yield __db.collection testCollectionName).findOne id: 'u7'
+        assert.isFalse result.data?
+        assert.strictEqual result.data1, ' :)'
+
+        yield migration.down()
+        assert.isTrue spyRenameField.calledWith testCollectionName, 'data1', 'data'
+        result = yield (yield __db.collection testCollectionName).findOne id: 'u7'
+        assert.strictEqual result.data, ' :)'
+        assert.isFalse result.data1?
+        yield return
+
+  describe '#changeCollection', ->
+    it 'Check correctness logic of the "changeCollection" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestMigration = createMigrationClass Test
+        TestMigration.change ()-> @changeCollection()
+        collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
+        migration = yield collection.build {}
+
+        spyChangeCollection = sinon.spy migration, 'changeCollection'
+        yield migration.up()
+        assert.isTrue spyChangeCollection.calledOnce
+
+        yield migration.down()
+        assert.isTrue spyChangeCollection.calledTwice
+        yield return
+
+  describe '#renameCollection', ->
+    it 'Check correctness logic of the "renameCollection" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        testCollectionName = 'TestCollectionRename1'
+        testCollectionName2 = 'TestCollectionRename2'
+        TestMigration = createMigrationClass Test
+        TestMigration.change ()-> @renameCollection testCollectionName, testCollectionName2
+        collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
+        migration = yield collection.build {}
+
+        date = new Date()
+        yield (yield __db.collection testCollectionName).insertOne id: 'a11', cid: 11, data: ' :)', createdAt: date, updatedAt: date
+
+        spyRenameCollection = sinon.spy migration, 'renameCollection'
+        yield migration.up()
+        assert.isTrue spyRenameCollection.calledWith testCollectionName, testCollectionName2
+        assert.lengthOf (yield __db.listCollections(name: testCollectionName).toArray()), 0
+        result = yield (yield __db.collection testCollectionName2).findOne id: 'a11'
+        assert.strictEqual result.cid, 11
+
+        yield migration.down()
+        assert.isTrue spyRenameCollection.calledWith testCollectionName2, testCollectionName
+        assert.lengthOf (yield __db.listCollections(name: testCollectionName2).toArray()), 0
+        result = yield (yield __db.collection testCollectionName).findOne id: 'a11'
+        assert.strictEqual result.cid, 11
+        yield return
+
+  describe '#renameIndex', ->
+    it 'Check correctness logic of the "renameIndex" function', ->
+      co ->
+        Test = createModuleClass()
+        TestCollection = createCollectionClass Test
+        TestMigration = createMigrationClass Test
+        TestMigration.change ()-> @renameIndex()
+        collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
+        migration = yield collection.build {}
+
+        spyRenameIndex = sinon.spy migration, 'renameIndex'
+        yield migration.up()
+        assert.isTrue spyRenameIndex.calledOnce
+
+        yield migration.down()
+        assert.isTrue spyRenameIndex.calledTwice
         yield return
 
   describe '#dropCollection', ->
@@ -395,12 +520,5 @@ describe 'MongoMigrationMixin', ->
         assert.isFalse yield (yield __db.collection testCollectionName).indexExists 'testIndex'
         yield (yield __db.collection testCollectionName).insertOne id: 'u777', cid: 777, data: ' :)'
 
-        yield migration.down()
+        yield migration.down() # Вызывает removeIndex еще раз.
         yield return
-
-
-# changeCollection
-# changeField
-# renameField
-# renameIndex
-# renameCollection

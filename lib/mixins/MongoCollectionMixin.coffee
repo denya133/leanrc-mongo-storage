@@ -81,6 +81,17 @@ module.exports = (Module)->
           do => @connection
           return
 
+      @public onRemove: Function,
+        default: ->
+          @super()
+          ###
+            @TODO:
+              Нужно разорвать соединение с БД, но только при условии, что больше никто не использует это соединение
+              Для этого нужно заиспользовать MetaObject, на init или onRegister добавлять в поле MetaObject имя инстанса, а при onRemove выпиливать оттуда свое имя
+              Если длинна поля будет равна 0 на этапе onRemove, то значит закрыть соединение.
+          ###
+          return
+
       @public @async push: Function,
         default: (aoRecord)->
           voQuery = Query.new()
@@ -156,7 +167,9 @@ module.exports = (Module)->
             .forIn '@doc': @collectionFullName()
             .count()
           cursor = yield @query voQuery
-          return yield Module::Promise.resolve (yield cursor.first()).result
+          obj = yield cursor.first()
+          result = (obj).result
+          return yield Module::Promise.resolve result
 
       wrapReference = (value)->
         if _.isString(value)
@@ -280,6 +293,7 @@ module.exports = (Module)->
 
           voQuery = {}
           aggUsed = aggPartial = intoUsed = intoPartial = finAggUsed = finAggPartial = null
+          isCustomReturn = no
 
           if aoQuery.$remove?
             do =>
@@ -327,7 +341,6 @@ module.exports = (Module)->
 
               if (voSort = aoQuery.$sort)?
                 voQuery.pipeline.push $sort: voSort.reduce (result, item)->
-                  # @HACK result[wrapReference asRef] = ' ASC'.indexOf asSortDirect
                   for own asRef, asSortDirect of item
                     result[wrapReference asRef] = if asSortDirect is 'ASC'
                       1
@@ -343,6 +356,7 @@ module.exports = (Module)->
                 voQuery.pipeline.push $limit: vnLimit
 
               if (voCollect = aoQuery.$collect)?
+                isCustomReturn = yes
                 collect = {}
                 for own asRef, aoValue of voCollect
                   do (asRef, aoValue)=>
@@ -364,15 +378,18 @@ module.exports = (Module)->
                 voQuery.pipeline.push $match: @parseFilter Parser.parse voHaving
 
               if (aoQuery.$count)?
+                isCustomReturn = yes
                 voQuery.pipeline.push $count: 'result'
 
               else if (vsSum = aoQuery.$sum)?
+                isCustomReturn = yes
                 voQuery.pipeline.push $group:
                   _id : null
                   result: $sum: "$#{wrapReference vsSum}"
                 voQuery.pipeline.push $project: _id: 0
 
               else if (vsMin = aoQuery.$min)?
+                isCustomReturn = yes
                 voQuery.pipeline.push $sort: "#{wrapReference vsMin}": 1
                 voQuery.pipeline.push $limit: 1
                 voQuery.pipeline.push $project:
@@ -380,6 +397,7 @@ module.exports = (Module)->
                   result: "$#{wrapReference vsMin}"
 
               else if (vsMax = aoQuery.$max)?
+                isCustomReturn = yes
                 voQuery.pipeline.push $sort: "#{wrapReference vsMax}": -1
                 voQuery.pipeline.push $limit: 1
                 voQuery.pipeline.push $project:
@@ -387,6 +405,7 @@ module.exports = (Module)->
                   result: "$#{wrapReference vsMax}"
 
               else if (vsAvg = aoQuery.$avg)?
+                isCustomReturn = yes
                 voQuery.pipeline.push $group:
                   _id : null
                   result: $avg: "$#{wrapReference vsAvg}"
@@ -394,6 +413,8 @@ module.exports = (Module)->
 
               else
                 if (voReturn = aoQuery.$return)?
+                  if voReturn isnt '@doc'
+                    isCustomReturn = yes
                   if _.isString voReturn
                     if voReturn isnt '@doc'
                       voQuery.pipeline.push
@@ -414,6 +435,7 @@ module.exports = (Module)->
                     voQuery.pipeline.push $group:
                       _id : '$$CURRENT'
 
+          voQuery.isCustomReturn = isCustomReturn
           return voQuery
 
       @public @async executeQuery: Function,
@@ -451,7 +473,10 @@ module.exports = (Module)->
               # Нужна для того, чтобы была общая логика после свича (создание курсора)
               yield collection.find aoQuery.filter
 
-          voCursor = MongoCursor.new @, voNativeCursor
+          voCursor = if aoQuery.isCustomReturn
+            MongoCursor.new null, voNativeCursor
+          else
+            MongoCursor.new @, voNativeCursor
           return voCursor
 
       @public @async createFileWriteStream: Function,

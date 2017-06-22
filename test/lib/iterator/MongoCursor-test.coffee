@@ -151,25 +151,25 @@ describe 'MongoCursor', ->
         # assert.isTrue err? # @TODO Uncomment it after will complete implementation functional for checking types of arguments
         yield return
 
-  describe '#setCursor', ->
+  describe '#setIterable', ->
     it 'Setup cursor on created MongoCursor instance with valid params', ->
       co ->
         Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
         cursor = Test::MongoCursor.new()
-        cursor.setCursor nativeCursor
+        cursor.setIterable nativeCursor
         assert.isTrue cursor[Test::MongoCursor.instanceVariables['_cursor'].pointer]?
         assert.strictEqual cursor[Test::MongoCursor.instanceVariables['_cursor'].pointer], nativeCursor
         yield return
-    it 'Use method setCursor for change used cursor', ->
+    it 'Use method setIterable for change used cursor', ->
       co ->
         Test = createModuleClass()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
         nativeCursor2 = yield dbCollection.find()
         cursor = Test::MongoCursor.new nativeCursor
-        cursor.setCursor nativeCursor2
+        cursor.setIterable nativeCursor2
         assert.isTrue cursor[Test::MongoCursor.instanceVariables['_cursor'].pointer]?
         assert.strictEqual cursor[Test::MongoCursor.instanceVariables['_cursor'].pointer], nativeCursor2
         yield return
@@ -179,7 +179,7 @@ describe 'MongoCursor', ->
         cursor = Test::MongoCursor.new()
         err = null
         try
-          cursor.setCursor()
+          cursor.setIterable()
         catch error
           err = error
         # assert.isTrue err? # @TODO Uncomment it after will complete implementation functional for checking types of arguments
@@ -190,7 +190,7 @@ describe 'MongoCursor', ->
         cursor = Test::MongoCursor.new()
         err = null
         try
-          cursor.setCursor true
+          cursor.setIterable true
         catch error
           err = error
         # assert.isTrue err? # @TODO Uncomment it after will complete implementation functional for checking types of arguments
@@ -201,7 +201,8 @@ describe 'MongoCursor', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        testCollectionInstance = TestCollection.new()
+        TestRecord = createRecordClass Test
+        testCollectionInstance = TestCollection.new 'TestCollection', delegate: TestRecord
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find().limit 1
         cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
@@ -406,28 +407,6 @@ describe 'MongoCursor', ->
         assert.strictEqual spyLambda.args[3][0].data, 'a boat', 'Lambda 4th call is not match'
         assert.strictEqual spyLambda.args[3][1],      3, 'Lambda 4th call is not match'
         yield return
-    it 'Check correctness logic of the "forEach" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        spyLambda = sinon.spy -> yield return
-        yield cursor.forEach spyLambda, TestRecord
-        assert.isTrue spyLambda.called, 'Lambda never called'
-        assert.strictEqual spyLambda.callCount,       4, 'Lambda calls are not match'
-        assert.strictEqual spyLambda.args[0][0].data, 'three', 'Lambda 1st call is not match'
-        assert.strictEqual spyLambda.args[0][1],      0, 'Lambda 1st call is not match'
-        assert.strictEqual spyLambda.args[1][0].data, 'men', 'Lambda 2nd call is not match'
-        assert.strictEqual spyLambda.args[1][1],      1, 'Lambda 2nd call is not match'
-        assert.strictEqual spyLambda.args[2][0].data, 'in', 'Lambda 3rd call is not match'
-        assert.strictEqual spyLambda.args[2][1],      2, 'Lambda 3rd call is not match'
-        assert.strictEqual spyLambda.args[3][0].data, 'a boat', 'Lambda 4th call is not match'
-        assert.strictEqual spyLambda.args[3][1],      3, 'Lambda 4th call is not match'
-        yield return
     it 'Check correctness logic of the "forEach" function when cursor haven\'t native cursor', ->
       co ->
         Test = createModuleClass()
@@ -474,25 +453,6 @@ describe 'MongoCursor', ->
         assert.strictEqual records[2].data, '3.in', '3rd record is not match'
         assert.strictEqual records[3].data, '4.a boat', '4th record is not match'
         yield return
-    it 'Check correctness logic of the "map" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        lambda = (record, index) ->
-          record.data = "#{index + 1}.#{record.data}"
-          yield Test::Promise.resolve record
-        records = yield cursor.map lambda, TestRecord
-        assert.lengthOf records, 4, 'Records count is not match'
-        assert.strictEqual records[0].data, '1.three', '1st record is not match'
-        assert.strictEqual records[1].data, '2.men', '2nd record is not match'
-        assert.strictEqual records[2].data, '3.in', '3rd record is not match'
-        assert.strictEqual records[3].data, '4.a boat', '4th record is not match'
-        yield return
     it 'Check correctness logic of the "map" function when cursor haven\'t native cursor', ->
       co ->
         Test = createModuleClass()
@@ -528,21 +488,6 @@ describe 'MongoCursor', ->
         cursor = Test::MongoCursor.new null, nativeCursor
         records = yield cursor.filter (record, index) ->
           yield Test::Promise.resolve record.data.length > 3 and index < 3
-        assert.lengthOf records, 1, 'Records count is not match'
-        assert.strictEqual records[0].data, 'three', '1st record is not match'
-        yield return
-    it 'Check correctness logic of the "filter" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        lambda = (record, index) ->
-          yield Test::Promise.resolve record.data.length > 3 and index < 3
-        records = yield cursor.filter lambda, TestRecord
         assert.lengthOf records, 1, 'Records count is not match'
         assert.strictEqual records[0].data, 'three', '1st record is not match'
         yield return
@@ -584,24 +529,6 @@ describe 'MongoCursor', ->
         cursor = Test::MongoCursor.new null, nativeCursor
         findedRecord = yield cursor.find (record, index) ->
           yield Test::Promise.resolve record.data.length > 3 and index < 3
-        assert.isTrue findedRecord?
-        assert.strictEqual findedRecord.data, 'three', 'Record is not match'
-        notFindedRecord = yield cursor.find (record, index) ->
-          yield Test::Promise.resolve record.data.length > 3 and index > 5
-        assert.isNull notFindedRecord
-        yield return
-    it 'Check correctness logic of the "find" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        lambda = (record, index) ->
-          yield Test::Promise.resolve record.data.length > 3 and index < 3
-        findedRecord = yield cursor.find lambda, TestRecord
         assert.isTrue findedRecord?
         assert.strictEqual findedRecord.data, 'three', 'Record is not match'
         notFindedRecord = yield cursor.find (record, index) ->
@@ -673,24 +600,6 @@ describe 'MongoCursor', ->
         assert.strictEqual records['3.in'].data, 'in', '3rd record is not match'
         assert.strictEqual records['4.a boat'].data, 'a boat', '4th record is not match'
         yield return
-    it 'Check correctness logic of the "reduce" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        lambda = (accumulator, item, index) ->
-          accumulator["#{index + 1}.#{item.data}"] = item
-          yield Test::Promise.resolve accumulator
-        records = yield cursor.reduce lambda, {}, TestRecord
-        assert.strictEqual records['1.three'].data, 'three', '1st record is not match'
-        assert.strictEqual records['2.men'].data, 'men', '2nd record is not match'
-        assert.strictEqual records['3.in'].data, 'in', '3rd record is not match'
-        assert.strictEqual records['4.a boat'].data, 'a boat', '4th record is not match'
-        yield return
     it 'Check correctness logic of the "reduce" function when cursor haven\'t native cursor', ->
       co ->
         Test = createModuleClass()
@@ -717,23 +626,16 @@ describe 'MongoCursor', ->
         assert.isTrue firstRecord?
         assert.strictEqual firstRecord.data, 'three', '1st record is not match'
         err = null
-        try
-          firstRecord = yield cursor.first()
-        catch error
-          err = error
-        assert.isTrue err?
+        firstRecord = yield cursor.first()
         assert.isTrue cursor.isClosed
         nativeCursor2 = yield dbCollection.find().sort id: 1
-        cursor.setCursor nativeCursor2
+        cursor.setIterable nativeCursor2
         firstRecord = yield cursor.first()
         assert.isTrue firstRecord?
         assert.strictEqual firstRecord.data, 'three', '1st record is not match'
-        err = null
-        try
-          firstRecord = yield cursor.first()
-        catch error
-          err = error
-        assert.isTrue err?
+        secondFirstRecord = yield cursor.first()
+        assert.isNull secondFirstRecord
+        # assert.deepEqual firstRecord, secondFirstRecord
         assert.isTrue cursor.isClosed
         yield return
     it 'Check correctness logic of the "first" function without Record class', ->
@@ -745,32 +647,9 @@ describe 'MongoCursor', ->
         firstRecord = yield cursor.first()
         assert.isTrue firstRecord?
         assert.strictEqual firstRecord.data, 'three', '1st record is not match'
-        err = null
-        try
-          firstRecord = yield cursor.first()
-        catch error
-          err = error
-        assert.isTrue err?
-        assert.isTrue cursor.isClosed
-        yield return
-    it 'Check correctness logic of the "first" function with custom Record class', ->
-      co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionInstance = TestCollection.new()
-        dbCollection = db.collection "test_thames_travel"
-        nativeCursor = yield dbCollection.find().sort id: 1
-        cursor = Test::MongoCursor.new testCollectionInstance, nativeCursor
-        firstRecord = yield cursor.first TestRecord
-        assert.isTrue firstRecord?
-        assert.strictEqual firstRecord.data, 'three', '1st record is not match'
-        err = null
-        try
-          firstRecord = yield cursor.first()
-        catch error
-          err = error
-        assert.isTrue err?
+        secondFirstRecord = yield cursor.first()
+        assert.isNull secondFirstRecord
+        # assert.deepEqual firstRecord, secondFirstRecord
         assert.isTrue cursor.isClosed
         yield return
     it 'Check correctness logic of the "first" function when cursor haven\'t native cursor', ->
