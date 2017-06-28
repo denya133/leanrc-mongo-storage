@@ -39,6 +39,7 @@ module.exports = (Module)->
 
       @implements QueryableMixinInterface
 
+      cpiConsumers        = @private @static consumers: Number
       cpoConnection       = @private @static connection: PromiseInterface
       ipoCollection       = @private collection: PromiseInterface
       ipoBucket           = @private bucket: PromiseInterface
@@ -82,18 +83,19 @@ module.exports = (Module)->
         default: ->
           @super()
           do => @connection
+          @constructor[cpiConsumers] ?= 0
+          @constructor[cpiConsumers]++
           return
 
-      @public onRemove: Function,
+      @public @async onRemove: Function,
         default: ->
           @super()
-          ###
-            @TODO:
-              Нужно разорвать соединение с БД, но только при условии, что больше никто не использует это соединение
-              Для этого нужно заиспользовать MetaObject, на init или onRegister добавлять в поле MetaObject имя инстанса, а при onRemove выпиливать оттуда свое имя
-              Если длинна поля будет равна 0 на этапе onRemove, то значит закрыть соединение.
-          ###
-          return
+          @constructor[cpiConsumers]--
+          if @constructor[cpiConsumers] is 0
+            connection = yield @constructor[cpoConnection]
+            yield connection.close(true)
+            @constructor[cpoConnection] = undefined
+          yield return
 
       @public @async push: Function,
         default: (aoRecord)->
