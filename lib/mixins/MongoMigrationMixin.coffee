@@ -61,15 +61,17 @@ module.exports = (Module)->
 
       @public @async createCollection: Function,
         default: (collectionName, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           yield voDB.createCollection collectionName, options
           yield return
 
       @public @async createEdgeCollection: Function,
         default: (collectionName1, collectionName2, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           yield voDB.createCollection "#{collectionName1}_#{collectionName2}", options
           yield return
 
@@ -86,8 +88,9 @@ module.exports = (Module)->
               initial = null
           else
             initial = null
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.updateMany {},
             $set:
@@ -97,8 +100,9 @@ module.exports = (Module)->
 
       @public @async addIndex: Function,
         default: (collectionName, fieldNames, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           indexFields = {}
           fieldNames.forEach (fieldName)->
@@ -112,8 +116,9 @@ module.exports = (Module)->
 
       @public @async addTimestamps: Function,
         default: (collectionName, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.updateMany {},
             $set:
@@ -147,8 +152,9 @@ module.exports = (Module)->
             array
             hash
           } = Module::Migration::SUPPORTED_TYPES
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           cursor = yield collection.find().batchSize(1)
           while yield cursor.hasNext()
@@ -174,8 +180,9 @@ module.exports = (Module)->
 
       @public @async renameField: Function,
         default: (collectionName, oldFieldName, newFieldName)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.updateMany {},
             $rename:
@@ -189,24 +196,27 @@ module.exports = (Module)->
 
       @public @async renameCollection: Function,
         default: (collectionName, newCollectionName)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.rename newCollectionName
           yield return
 
       @public @async dropCollection: Function,
         default: (collectionName)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           if (yield voDB.listCollections(name: collectionName).toArray()).length isnt 0
             yield voDB.dropCollection collectionName
           yield return
 
       @public @async dropEdgeCollection: Function,
         default: (collectionName1, collectionName2)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collectionName = "#{collectionName1}_#{collectionName2}"
           if (yield voDB.listCollections(name: collectionName).toArray()).length isnt 0
             yield voDB.dropCollection collectionName
@@ -214,8 +224,9 @@ module.exports = (Module)->
 
       @public @async removeField: Function,
         default: (collectionName, fieldName)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.updateMany {},
             $unset:
@@ -225,8 +236,9 @@ module.exports = (Module)->
 
       @public @async removeIndex: Function,
         default: (collectionName, fieldNames, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           indexName = options.name
           unless indexName?
@@ -244,8 +256,9 @@ module.exports = (Module)->
 
       @public @async removeTimestamps: Function,
         default: (collectionName, options)->
-          {db: dbName} = @collection.getData()
-          voDB = yield (yield @collection.connection).db dbName
+          # {dbName} = @collection.getData().mongodb
+          # voDB = yield (yield @collection.connection).db dbName
+          voDB = yield @collection.connection
           collection = yield voDB.collection collectionName
           yield collection.updateMany {},
             $unset:

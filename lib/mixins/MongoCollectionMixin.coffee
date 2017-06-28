@@ -47,10 +47,10 @@ module.exports = (Module)->
         get: ->
           @constructor[cpoConnection] ?= co =>
             credentials = ''
-            { username, password, host, port, default_db } = @getData()
+            { username, password, host, port, dbName } = @getData().mongodb
             if username and password
               credentials =  "#{username}:#{password}@"
-            db_url = "mongodb://#{credentials}#{host}:#{port}/#{default_db}?authSource=admin"
+            db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
             connection = yield MongoClient.connect db_url
             yield return connection
           @constructor[cpoConnection]
@@ -58,21 +58,24 @@ module.exports = (Module)->
       @public collection: PromiseInterface,
         get: ->
           @[ipoCollection] ?= co =>
-            {db, collection: collectionName} = @getData()
+            # {db, collection: collectionName} = @getData()
             connection = yield @connection
-            voDB = connection.db db
-            yield return voDB.collection collectionName
+            # voDB = connection.db db
+            # yield return voDB.collection collectionName
+            yield return connection.collection @collectionFullName()
           @[ipoCollection]
 
       @public bucket: PromiseInterface,
         get: ->
           @[ipoBucket] ?= co =>
-            {db, collection: collectionName} = @getData()
+            { dbName } = @configs.mongodb
+            # {db, collection: collectionName} = @getData()
             connection = yield @connection
-            voDB = connection.db db
+            # voDB = connection.db db
+            voDB = connection.db "#{dbName}_fs"
             yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
-              bucketName: collectionName
+              bucketName: 'binary-store'
           @[ipoBucket]
 
       @public onRegister: Function,
