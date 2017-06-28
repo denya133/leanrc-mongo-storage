@@ -33,20 +33,21 @@ module.exports = (Module)->
     MongoCursor
   } = Module::
 
+  _connection = null
+  _consumers = null
+
   Module.defineMixin Collection, (BaseClass) ->
     class MongoCollectionMixin extends BaseClass
       @inheritProtected()
 
       @implements QueryableMixinInterface
 
-      cpiConsumers        = @private @static consumers: Number
-      cpoConnection       = @private @static connection: PromiseInterface
       ipoCollection       = @private collection: PromiseInterface
       ipoBucket           = @private bucket: PromiseInterface
 
       @public connection: PromiseInterface,
         get: ->
-          @constructor[cpoConnection] ?= co =>
+          _connection ?= co =>
             credentials = ''
             { username, password, host, port, dbName } = @getData().mongodb
             if username and password
@@ -54,7 +55,7 @@ module.exports = (Module)->
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
             connection = yield MongoClient.connect db_url
             yield return connection
-          @constructor[cpoConnection]
+          _connection
 
       @public collection: PromiseInterface,
         get: ->
@@ -83,18 +84,18 @@ module.exports = (Module)->
         default: ->
           @super()
           do => @connection
-          @constructor[cpiConsumers] ?= 0
-          @constructor[cpiConsumers]++
+          _consumers ?= 0
+          _consumers++
           return
 
       @public @async onRemove: Function,
         default: ->
           @super()
-          @constructor[cpiConsumers]--
-          if @constructor[cpiConsumers] is 0
-            connection = yield @constructor[cpoConnection]
+          _consumers--
+          if _consumers is 0
+            connection = yield _connection
             yield connection.close(true)
-            @constructor[cpoConnection] = undefined
+            _connection = undefined
           yield return
 
       @public @async push: Function,
