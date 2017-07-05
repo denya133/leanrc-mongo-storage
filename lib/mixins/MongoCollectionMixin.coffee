@@ -26,7 +26,7 @@ module.exports = (Module)->
     ANY
 
     Collection
-    QueryableMixinInterface
+    QueryableCollectionMixinInterface
     PromiseInterface
     Utils: { co }
     Query
@@ -40,7 +40,7 @@ module.exports = (Module)->
     class MongoCollectionMixin extends BaseClass
       @inheritProtected()
 
-      @implements QueryableMixinInterface
+      @implements QueryableCollectionMixinInterface
 
       ipoCollection       = @private collection: PromiseInterface
       ipoBucket           = @private bucket: PromiseInterface
