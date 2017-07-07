@@ -276,7 +276,11 @@ module.exports = (Module)->
         return: ANY
         default: ({field, parts = [], operator, operand, implicitField})->
           if field? and operator isnt '$elemMatch' and parts.length is 0
-            @operatorsMap[operator] field, operand
+            customFilter = @delegate.customFilters[field]
+            if (customFilterFunc = customFilter?[operator])?
+              customFilterFunc.call @, operand
+            else
+              @operatorsMap[operator] field, operand
           else if field? and operator is '$elemMatch'
             @operatorsMap[operator] field, parts.reduce (result, part)=>
               if implicitField and not part.field? and (not part.parts? or part.parts.length is 0)
