@@ -41,6 +41,7 @@ Extension = (BaseClass) ->
     require('./iterator/MongoCursor') @Module
 
     require('./mixins/MongoCollectionMixin') @Module
+    require('./mixins/MongoSerializerMixin') @Module
     require('./mixins/MongoMigrationMixin') @Module
   MongoStorage.initializeMixin()
 
