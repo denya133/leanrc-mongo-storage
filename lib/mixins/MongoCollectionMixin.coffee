@@ -292,7 +292,7 @@ module.exports = (Module)->
           else
             @operatorsMap[operator ? '$and'] parts.map @parseFilter.bind @
 
-      @public parseQuery: Function,
+      @public @async parseQuery: Function,
         default: (aoQuery)->
           if aoQuery.$join?
             throw new Error '`$join` not available for Mongo queries'
@@ -446,7 +446,7 @@ module.exports = (Module)->
                       _id : '$$CURRENT'
 
           voQuery.isCustomReturn = isCustomReturn
-          return voQuery
+          yield return voQuery
 
       @public @async executeQuery: Function,
         default: (aoQuery, options)->
