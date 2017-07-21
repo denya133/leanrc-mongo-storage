@@ -120,7 +120,11 @@ module.exports = (Module)->
       @public @async take: Function,
         default: (id)->
           collection = yield @collection
-          return @normalize yield collection.findOne {id: $eq: id}
+          rawRecord = yield collection.findOne {id: $eq: id}
+          if rawRecord?
+            yield return @normalize rawRecord
+          else
+            yield return
 
       @public @async takeBy: Function,
         default: (query)->
@@ -143,13 +147,17 @@ module.exports = (Module)->
       @public @async override: Function,
         default: (id, aoRecord)->
           collection = yield @collection
-          snapshot = @serialize voRecord
+          snapshot = @serialize aoRecord
           yield collection.updateOne {id: $eq: id}, $set: snapshot,
             multi: yes
             w: "majority"
             j: yes
             wtimeout: 500
-          return @normalize yield collection.findOne {id: $eq: id}
+          rawRecord = yield collection.findOne {id: $eq: id}
+          if rawRecord?
+            yield return @normalize rawRecord
+          else
+            yield return
 
       @public @async includes: Function,
         default: (id)->
