@@ -100,82 +100,72 @@ module.exports = (Module)->
 
       @public @async push: Function,
         default: (aoRecord)->
-          voQuery = Query.new()
-            .insert aoRecord
-            .into @collectionFullName()
-          yield @query voQuery
-          return yield Module::Promise.resolve yes
+          collection = yield @collection
+          snapshot = @serialize aoRecord
+          yield collection.insertOne snapshot,
+            w: "majority"
+            j: yes
+            wtimeout: 500
+          return @normalize yield collection.findOne id: $eq: snapshot.id
 
       @public @async remove: Function,
         default: (id)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $eq: id
-            .remove()
-          yield @query voQuery
-          return yield Module::Promise.resolve yes
+          collection = yield @collection
+          yield collection.deleteOne {id: $eq: id},
+            w: "majority"
+            j: yes
+            wtimeout: 500
+          yield return
 
       @public @async take: Function,
         default: (id)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $eq: id
-            .return '@doc'
-          cursor = yield @query voQuery
-          return yield cursor.first()
+          collection = yield @collection
+          return @normalize yield collection.findOne {id: $eq: id}
+
+      @public @async takeBy: Function,
+        default: (query)->
+          collection = yield @collection
+          voNativeCursor = yield collection.find @parseFilter Parser.parse query
+          yield return Module::ArangoCursor.new @, voNativeCursor
 
       @public @async takeMany: Function,
         default: (ids)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $in: ids
-            .return '@doc'
-          return yield @query voQuery
+          collection = yield @collection
+          voNativeCursor = yield collection.find {id: $in: ids}
+          yield return Module::ArangoCursor.new @, voNativeCursor
 
       @public @async takeAll: Function,
         default: ->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .return '@doc'
-          return yield @query voQuery
+          collection = yield @collection
+          voNativeCursor = yield collection.find()
+          yield return Module::ArangoCursor.new @, voNativeCursor
 
       @public @async override: Function,
         default: (id, aoRecord)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $eq: id
-            .replace aoRecord
-            .into @collectionFullName()
-          return yield @query voQuery
-
-      @public @async patch: Function,
-        default: (id, aoRecord)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $eq: id
-            .update aoRecord
-            .into @collectionFullName()
-          return yield @query voQuery
+          collection = yield @collection
+          snapshot = @serialize voRecord
+          yield collection.updateOne {id: $eq: id}, $set: snapshot,
+            multi: yes
+            w: "majority"
+            j: yes
+            wtimeout: 500
+          return @normalize yield collection.findOne {id: $eq: id}
 
       @public @async includes: Function,
         default: (id)->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .filter '@doc.id': $eq: id
-            .limit 1
-            .return '@doc'
-          cursor = yield @query voQuery
-          return yield cursor.hasNext()
+          collection = yield @collection
+          return (yield collection.findOne {id: $eq: id})?
+
+      @public @async exists: Function,
+        default: (query)->
+          collection = yield @collection
+          return (yield collection.count @parseFilter Parser.parse query) isnt 0
 
       @public @async length: Function,
         default: ->
-          voQuery = Query.new()
-            .forIn '@doc': @collectionFullName()
-            .count()
-          cursor = yield @query voQuery
-          obj = yield cursor.first()
-          result = (obj).result
-          return yield Module::Promise.resolve result
+          collection = yield @collection
+          stats = yield collection.stats()
+          yield return stats.count
 
       wrapReference = (value)->
         if _.isString(value)
@@ -306,144 +296,125 @@ module.exports = (Module)->
           isCustomReturn = no
 
           if aoQuery.$remove?
-            do =>
+            if aoQuery.$forIn?
+              # работа будет только с одной коллекцией, поэтому игнорируем
+              voQuery.queryType = 'removeBy'
+              if (voFilter = aoQuery.$filter)?
+                voQuery.filter = @parseFilter Parser.parse voFilter
+              isCustomReturn = yes
+              voQuery
+          else if aoQuery.$patch?
+            if aoQuery.$into?
+              voQuery.queryType = 'patchBy'
               if aoQuery.$forIn?
-                # работа будет только с одной коллекцией, поэтому игнорируем
-                voQuery.queryType = 'remove'
+                # работа будет только с одной коллекцией, поэтому игнорируем $forIn
                 if (voFilter = aoQuery.$filter)?
                   voQuery.filter = @parseFilter Parser.parse voFilter
-                voQuery
-          else if (voRecord = aoQuery.$insert)?
-            do =>
-              if aoQuery.$into?
-                voQuery.queryType = 'insert'
-                # if aoQuery.$forIn?
-                  # работа будет только с одной коллекцией, поэтому игнорируем
-                voQuery.snapshot = @serializer.serialize voRecord
-                voQuery
-          else if (voRecord = aoQuery.$update)?
-            do =>
-              if aoQuery.$into?
-                voQuery.queryType = 'update'
-                if aoQuery.$forIn?
-                  # работа будет только с одной коллекцией, поэтому игнорируем $forIn
-                  if (voFilter = aoQuery.$filter)?
-                    voQuery.filter = @parseFilter Parser.parse voFilter
-                voQuery.snapshot = @serializer.serialize voRecord
-                voQuery
-          else if (voRecord = aoQuery.$replace)?
-            do =>
-              if aoQuery.$into?
-                voQuery.queryType = 'replace'
-                if aoQuery.$forIn?
-                  # работа будет только с одной коллекцией, поэтому игнорируем $forIn
-                  if (voFilter = aoQuery.$filter)?
-                    voQuery.filter = @parseFilter Parser.parse voFilter
-                voQuery.snapshot = @serializer.serialize voRecord
-                voQuery
+              voQuery.patch = aoQuery.$patch
+              isCustomReturn = yes
+              voQuery
           else if aoQuery.$forIn?
-            do =>
-              voQuery.queryType = 'find'
-              voQuery.pipeline = []
+            voQuery.queryType = 'query'
+            voQuery.pipeline = []
 
-              if (voFilter = aoQuery.$filter)?
-                voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
+            if (voFilter = aoQuery.$filter)?
+              voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
 
-              if (voSort = aoQuery.$sort)?
-                voQuery.pipeline.push $sort: voSort.reduce (result, item)->
-                  for own asRef, asSortDirect of item
-                    result[wrapReference asRef] = if asSortDirect is 'ASC'
-                      1
-                    else
-                      -1
-                  result
-                , {}
+            if (voSort = aoQuery.$sort)?
+              voQuery.pipeline.push $sort: voSort.reduce (result, item)->
+                for own asRef, asSortDirect of item
+                  result[wrapReference asRef] = if asSortDirect is 'ASC'
+                    1
+                  else
+                    -1
+                result
+              , {}
 
-              if (vnOffset = aoQuery.$offset)?
-                voQuery.pipeline.push $skip: vnOffset
+            if (vnOffset = aoQuery.$offset)?
+              voQuery.pipeline.push $skip: vnOffset
 
-              if (vnLimit = aoQuery.$limit)?
-                voQuery.pipeline.push $limit: vnLimit
+            if (vnLimit = aoQuery.$limit)?
+              voQuery.pipeline.push $limit: vnLimit
 
-              if (voCollect = aoQuery.$collect)?
-                isCustomReturn = yes
-                collect = {}
-                for own asRef, aoValue of voCollect
-                  do (asRef, aoValue)=>
-                    collect[wrapReference asRef] = wrapReference aoValue
+            if (voCollect = aoQuery.$collect)?
+              isCustomReturn = yes
+              collect = {}
+              for own asRef, aoValue of voCollect
+                do (asRef, aoValue)=>
+                  collect[wrapReference asRef] = wrapReference aoValue
 
-                into = if (vsInto = aoQuery.$into)?
-                  wrapReference vsInto
-                else
-                  'GROUP'
-                voQuery.pipeline.push $group:
-                  _id: collect
-                  "#{into}":
-                    $push: Object.keys(@delegate.attributes).reduce (p, c)->
-                      p[c] = "$#{c}"
-                      p
-                    , {}
-
-              if (voHaving = aoQuery.$having)?
-                voQuery.pipeline.push $match: @parseFilter Parser.parse voHaving
-
-              if (aoQuery.$count)?
-                isCustomReturn = yes
-                voQuery.pipeline.push $count: 'result'
-
-              else if (vsSum = aoQuery.$sum)?
-                isCustomReturn = yes
-                voQuery.pipeline.push $group:
-                  _id : null
-                  result: $sum: "$#{wrapReference vsSum}"
-                voQuery.pipeline.push $project: _id: 0
-
-              else if (vsMin = aoQuery.$min)?
-                isCustomReturn = yes
-                voQuery.pipeline.push $sort: "#{wrapReference vsMin}": 1
-                voQuery.pipeline.push $limit: 1
-                voQuery.pipeline.push $project:
-                  _id: 0
-                  result: "$#{wrapReference vsMin}"
-
-              else if (vsMax = aoQuery.$max)?
-                isCustomReturn = yes
-                voQuery.pipeline.push $sort: "#{wrapReference vsMax}": -1
-                voQuery.pipeline.push $limit: 1
-                voQuery.pipeline.push $project:
-                  _id: 0
-                  result: "$#{wrapReference vsMax}"
-
-              else if (vsAvg = aoQuery.$avg)?
-                isCustomReturn = yes
-                voQuery.pipeline.push $group:
-                  _id : null
-                  result: $avg: "$#{wrapReference vsAvg}"
-                voQuery.pipeline.push $project: _id: 0
-
+              into = if (vsInto = aoQuery.$into)?
+                wrapReference vsInto
               else
-                if (voReturn = aoQuery.$return)?
-                  if voReturn isnt '@doc'
-                    isCustomReturn = yes
-                  if _.isString voReturn
-                    if voReturn isnt '@doc'
-                      voQuery.pipeline.push
-                        $project:
-                          _id: 0
-                          "#{wrapReference voReturn}": 1
-                  else if _.isObject voReturn
-                    vhObj = {}
-                    projectObj = {}
-                    for own key, value of voReturn
-                      do (key, value)->
-                        vhObj[key] = "$#{wrapReference value}"
-                        projectObj[key] = 1
-                    voQuery.pipeline.push $addFields: vhObj
-                    voQuery.pipeline.push $project: projectObj
+                'GROUP'
+              voQuery.pipeline.push $group:
+                _id: collect
+                "#{into}":
+                  $push: Object.keys(@delegate.attributes).reduce (p, c)->
+                    p[c] = "$#{c}"
+                    p
+                  , {}
 
-                  if aoQuery.$distinct
-                    voQuery.pipeline.push $group:
-                      _id : '$$CURRENT'
+            if (voHaving = aoQuery.$having)?
+              voQuery.pipeline.push $match: @parseFilter Parser.parse voHaving
+
+            if (aoQuery.$count)?
+              isCustomReturn = yes
+              voQuery.pipeline.push $count: 'result'
+
+            else if (vsSum = aoQuery.$sum)?
+              isCustomReturn = yes
+              voQuery.pipeline.push $group:
+                _id : null
+                result: $sum: "$#{wrapReference vsSum}"
+              voQuery.pipeline.push $project: _id: 0
+
+            else if (vsMin = aoQuery.$min)?
+              isCustomReturn = yes
+              voQuery.pipeline.push $sort: "#{wrapReference vsMin}": 1
+              voQuery.pipeline.push $limit: 1
+              voQuery.pipeline.push $project:
+                _id: 0
+                result: "$#{wrapReference vsMin}"
+
+            else if (vsMax = aoQuery.$max)?
+              isCustomReturn = yes
+              voQuery.pipeline.push $sort: "#{wrapReference vsMax}": -1
+              voQuery.pipeline.push $limit: 1
+              voQuery.pipeline.push $project:
+                _id: 0
+                result: "$#{wrapReference vsMax}"
+
+            else if (vsAvg = aoQuery.$avg)?
+              isCustomReturn = yes
+              voQuery.pipeline.push $group:
+                _id : null
+                result: $avg: "$#{wrapReference vsAvg}"
+              voQuery.pipeline.push $project: _id: 0
+
+            else
+              if (voReturn = aoQuery.$return)?
+                if voReturn isnt '@doc'
+                  isCustomReturn = yes
+                if _.isString voReturn
+                  if voReturn isnt '@doc'
+                    voQuery.pipeline.push
+                      $project:
+                        _id: 0
+                        "#{wrapReference voReturn}": 1
+                else if _.isObject voReturn
+                  vhObj = {}
+                  projectObj = {}
+                  for own key, value of voReturn
+                    do (key, value)->
+                      vhObj[key] = "$#{wrapReference value}"
+                      projectObj[key] = 1
+                  voQuery.pipeline.push $addFields: vhObj
+                  voQuery.pipeline.push $project: projectObj
+
+                if aoQuery.$distinct
+                  voQuery.pipeline.push $group:
+                    _id : '$$CURRENT'
 
           voQuery.isCustomReturn = isCustomReturn
           yield return voQuery
@@ -452,39 +423,27 @@ module.exports = (Module)->
         default: (aoQuery, options)->
           collection = yield @collection
           voNativeCursor = switch aoQuery.queryType
-            when 'find'
+            when 'query'
               yield collection.aggregate aoQuery.pipeline, cursor: batchSize: 1
-            when 'insert'
-              yield collection.insertOne aoQuery.snapshot,
-                w: "majority"
-                j: yes
-                wtimeout: 500
-              yield collection.find _id: $eq: aoQuery.snapshot._id
-            when 'update'
-              yield collection.updateMany aoQuery.filter, $set: aoQuery.snapshot,
+            when 'patchBy'
+              yield collection.updateMany aoQuery.filter, $set: aoQuery.patch,
                 multi: yes
                 w: "majority"
                 j: yes
                 wtimeout: 500
-              yield collection.find aoQuery.filter
-            when 'replace'
-              yield collection.updateMany aoQuery.filter, $set: aoQuery.snapshot,
-                multi: yes
-                w: "majority"
-                j: yes
-                wtimeout: 500
-              yield collection.find aoQuery.filter
-            when 'remove'
+              null
+            when 'removeBy'
               yield collection.deleteMany aoQuery.filter,
                 w: "majority"
                 j: yes
                 wtimeout: 500
-              # Строка ниже всегда будет возращать пустой массив.
-              # Нужна для того, чтобы была общая логика после свича (создание курсора)
-              yield collection.find aoQuery.filter
+              null
 
           voCursor = if aoQuery.isCustomReturn
-            MongoCursor.new null, voNativeCursor
+            if voNativeCursor?
+              MongoCursor.new null, voNativeCursor
+            else
+              Module::Cursor.new null, []
           else
             MongoCursor.new @, voNativeCursor
           return voCursor
