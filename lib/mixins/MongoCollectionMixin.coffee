@@ -306,6 +306,7 @@ module.exports = (Module)->
           if aoQuery.$remove?
             if aoQuery.$forIn?
               # работа будет только с одной коллекцией, поэтому игнорируем
+              voQuery.filter = {}
               voQuery.queryType = 'removeBy'
               if (voFilter = aoQuery.$filter)?
                 voQuery.filter = @parseFilter Parser.parse voFilter
@@ -313,6 +314,7 @@ module.exports = (Module)->
               voQuery
           else if aoQuery.$patch?
             if aoQuery.$into?
+              voQuery.filter = {}
               voQuery.queryType = 'patchBy'
               if aoQuery.$forIn?
                 # работа будет только с одной коллекцией, поэтому игнорируем $forIn
