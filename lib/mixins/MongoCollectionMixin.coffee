@@ -130,19 +130,19 @@ module.exports = (Module)->
         default: (query)->
           collection = yield @collection
           voNativeCursor = yield collection.find @parseFilter Parser.parse query
-          yield return Module::ArangoCursor.new @, voNativeCursor
+          yield return Module::MongoCursor.new @, voNativeCursor
 
       @public @async takeMany: Function,
         default: (ids)->
           collection = yield @collection
           voNativeCursor = yield collection.find {id: $in: ids}
-          yield return Module::ArangoCursor.new @, voNativeCursor
+          yield return Module::MongoCursor.new @, voNativeCursor
 
       @public @async takeAll: Function,
         default: ->
           collection = yield @collection
           voNativeCursor = yield collection.find()
-          yield return Module::ArangoCursor.new @, voNativeCursor
+          yield return Module::MongoCursor.new @, voNativeCursor
 
       @public @async override: Function,
         default: (id, aoRecord)->
