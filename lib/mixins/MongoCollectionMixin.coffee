@@ -24,6 +24,7 @@ module.exports = (Module)->
 module.exports = (Module)->
   {
     ANY
+    NILL
 
     Collection
     QueryableCollectionMixinInterface
@@ -481,6 +482,17 @@ module.exports = (Module)->
           # console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
           bucket = yield @bucket
           yield return (yield bucket.find filename: opts._id).hasNext()
+
+      @public @async removeFile: Function,
+        args: [Object]
+        return: NILL
+        default: (opts, callback) ->
+          # console.log '@@@@@@@!!!!!!! Storage.removeFile', opts
+          bucket = yield @bucket
+          cursor = yield bucket.find filename: opts._id
+          if cursor.hasNext()
+            yield bucket.delete cursor.next()._id
+          yield return
 
 
     MongoCollectionMixin.initializeMixin()
