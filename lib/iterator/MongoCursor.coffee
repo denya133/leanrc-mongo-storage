@@ -7,13 +7,13 @@ module.exports = (Module)->
 
     Collection
     CoreObject
-    CursorInterface
+    # CursorInterface
   } = Module::
 
   class MongoCursor extends CoreObject
     @inheritProtected()
 
-    @implements CursorInterface
+    # @implements CursorInterface
 
     @module Module
 
@@ -27,7 +27,7 @@ module.exports = (Module)->
 
     @public setIterable: Function,
       args: [ANY]
-      return: CursorInterface
+      return: Module::CursorInterface
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
