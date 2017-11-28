@@ -29,9 +29,14 @@ module.exports = (Module)->
     Collection
     # QueryableCollectionMixinInterface
     PromiseInterface
-    Utils: { co }
     Query
     MongoCursor
+    LogMessage: {
+      SEND_TO_LOG
+      LEVELS
+      DEBUG
+    }
+    Utils: { co, jsonStringify }
   } = Module::
 
   _connection = null
@@ -61,10 +66,7 @@ module.exports = (Module)->
       @public collection: PromiseInterface,
         get: ->
           @[ipoCollection] ?= co =>
-            # {db, collection: collectionName} = @getData()
             connection = yield @connection
-            # voDB = connection.db db
-            # yield return voDB.collection collectionName
             yield return connection.collection @collectionFullName()
           @[ipoCollection]
 
@@ -72,9 +74,7 @@ module.exports = (Module)->
         get: ->
           @[ipoBucket] ?= co =>
             { dbName } = @configs.mongodb
-            # {db, collection: collectionName} = @getData()
             connection = yield @connection
-            # voDB = connection.db db
             voDB = connection.db "#{dbName}_fs"
             yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
@@ -102,7 +102,9 @@ module.exports = (Module)->
       @public @async push: Function,
         default: (aoRecord)->
           collection = yield @collection
+          stats = yield collection.stats()
           snapshot = @serialize aoRecord
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::push ns = #{stats.ns}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.insertOne snapshot,
             w: "majority"
             j: yes
@@ -112,6 +114,8 @@ module.exports = (Module)->
       @public @async remove: Function,
         default: (id)->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::remove ns = #{stats.ns}, id = #{id}", LEVELS[DEBUG])
           yield collection.deleteOne {id: $eq: id},
             w: "majority"
             j: yes
@@ -121,6 +125,8 @@ module.exports = (Module)->
       @public @async take: Function,
         default: (id)->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::take ns = #{stats.ns}, id = #{id}", LEVELS[DEBUG])
           rawRecord = yield collection.findOne {id: $eq: id}
           if rawRecord?
             yield return @normalize rawRecord
@@ -130,18 +136,25 @@ module.exports = (Module)->
       @public @async takeBy: Function,
         default: (query)->
           collection = yield @collection
-          voNativeCursor = yield collection.find @parseFilter Parser.parse query
+          stats = yield collection.stats()
+          voQuery = @parseFilter Parser.parse query
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeBy ns = #{stats.ns}, voQuery = #{jsonStringify voQuery}", LEVELS[DEBUG])
+          voNativeCursor = yield collection.find voQuery
           yield return Module::MongoCursor.new @, voNativeCursor
 
       @public @async takeMany: Function,
         default: (ids)->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeMany ns = #{stats.ns}, ids = #{jsonStringify ids}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find {id: $in: ids}
           yield return Module::MongoCursor.new @, voNativeCursor
 
       @public @async takeAll: Function,
         default: ->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeAll ns = #{stats.ns}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find()
           yield return Module::MongoCursor.new @, voNativeCursor
 
@@ -149,6 +162,8 @@ module.exports = (Module)->
         default: (id, aoRecord)->
           collection = yield @collection
           snapshot = @serialize aoRecord
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::override ns = #{stats.ns}, id = #{id}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.updateOne {id: $eq: id}, $set: snapshot,
             multi: yes
             w: "majority"
@@ -163,17 +178,23 @@ module.exports = (Module)->
       @public @async includes: Function,
         default: (id)->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::includes ns = #{stats.ns}, id = #{id}", LEVELS[DEBUG])
           return (yield collection.findOne {id: $eq: id})?
 
       @public @async exists: Function,
         default: (query)->
           collection = yield @collection
-          return (yield collection.count @parseFilter Parser.parse query) isnt 0
+          stats = yield collection.stats()
+          voQuery = @parseFilter Parser.parse query
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::exists ns = #{stats.ns}, voQuery = #{jsonStringify voQuery}", LEVELS[DEBUG])
+          return (yield collection.count voQuery) isnt 0
 
       @public @async length: Function,
         default: ->
           collection = yield @collection
           stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::length ns = #{stats.ns}", LEVELS[DEBUG])
           yield return stats.count
 
       wrapReference = (value)->
@@ -433,6 +454,8 @@ module.exports = (Module)->
       @public @async executeQuery: Function,
         default: (aoQuery, options)->
           collection = yield @collection
+          stats = yield collection.stats()
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::executeQuery ns = #{stats.ns}, aoQuery = #{jsonStringify aoQuery}", LEVELS[DEBUG])
           voNativeCursor = switch aoQuery.queryType
             when 'query'
               yield collection.aggregate aoQuery.pipeline, cursor: batchSize: 1
@@ -463,32 +486,32 @@ module.exports = (Module)->
         args: [Object]
         return: Object
         default: (opts) ->
-          # console.log '@@@@@@@!!!!!!! Storage.createFileWriteStream', opts
           bucket = yield @bucket
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileWriteStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
           yield return bucket.openUploadStream opts._id, {}
 
       @public @async createFileReadStream: Function,
         args: [Object]
         return: Object
         default: (opts) ->
-          # console.log '@@@@@@@!!!!!!! Storage.createFileReadStream', opts
           bucket = yield @bucket
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileReadStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
           yield return bucket.openDownloadStreamByName opts._id, {}
 
       @public @async fileExists: Function,
         args: [Object]
         return: Boolean
         default: (opts, callback) ->
-          # console.log '@@@@@@@!!!!!!! Storage.fileExists', opts
           bucket = yield @bucket
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
           yield return (yield bucket.find filename: opts._id).hasNext()
 
       @public @async removeFile: Function,
         args: [Object]
         return: NILL
         default: (opts, callback) ->
-          # console.log '@@@@@@@!!!!!!! Storage.removeFile', opts
           bucket = yield @bucket
+          @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::removeFile opts = #{jsonStringify opts}", LEVELS[DEBUG])
           cursor = yield bucket.find filename: opts._id
           if cursor.hasNext()
             yield bucket.delete cursor.next()._id

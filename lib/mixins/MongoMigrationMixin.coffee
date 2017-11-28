@@ -55,25 +55,33 @@ module.exports = (Module)->
 # миксин должен содержать нативный платформозависимый код для обращения к релаьной базе данных на понятном ей языке.
 
 module.exports = (Module)->
-  Module.defineMixin Module::Migration, (BaseClass) ->
+  {
+    Migration
+    LogMessage: {
+      SEND_TO_LOG
+      LEVELS
+      DEBUG
+    }
+    Utils: { jsonStringify }
+  } = Module::
+
+  Module.defineMixin Migration, (BaseClass) ->
     class MongoMigrationMixin extends BaseClass
       @inheritProtected()
 
       @public @async createCollection: Function,
         default: (collectionName, options)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::createCollection qualifiedName = #{qualifiedName}, options = #{jsonStringify options}", LEVELS[DEBUG])
           yield voDB.createCollection qualifiedName, options
           yield return
 
       @public @async createEdgeCollection: Function,
         default: (collectionName1, collectionName2, options)->
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::createEdgeCollection qualifiedName = #{qualifiedName}, options = #{jsonStringify options}", LEVELS[DEBUG])
           yield voDB.createCollection qualifiedName, options
           yield return
 
@@ -91,9 +99,8 @@ module.exports = (Module)->
               initial = null
           else
             initial = null
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addField qualifiedName = #{qualifiedName}, $set: #{jsonStringify "#{fieldName}": initial}", LEVELS[DEBUG])
           collection = yield voDB.collection qualifiedName
           yield collection.updateMany {},
             $set:
@@ -104,32 +111,32 @@ module.exports = (Module)->
       @public @async addIndex: Function,
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
           indexFields = {}
           fieldNames.forEach (fieldName)->
             indexFields[fieldName] = 1
-          yield collection.ensureIndex indexFields,
+          opts =
             unique: options.unique
             sparse: options.sparse
             background: options.background
             name: options.name
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addIndex indexFields = #{jsonStringify indexFields}, opts = #{jsonStringify opts}", LEVELS[DEBUG])
+          yield collection.ensureIndex indexFields, opts
           yield return
 
       @public @async addTimestamps: Function,
         default: (collectionName, options)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
+          timestamps =
+            createdAt: null
+            updatedAt: null
+            deletedAt: null
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addTimestamps qualifiedName = #{qualifiedName}, $set: #{jsonStringify timestamps}", LEVELS[DEBUG])
           yield collection.updateMany {},
-            $set:
-              createdAt: null
-              updatedAt: null
-              deletedAt: null
+            $set: timestamps
           , w: 1
           yield return
 
@@ -157,8 +164,6 @@ module.exports = (Module)->
             array
             hash
           } = Module::Migration::SUPPORTED_TYPES
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
@@ -178,6 +183,7 @@ module.exports = (Module)->
                 (new Date document[fieldName]).toISOString()
               when time, timestamp
                 Number new Date document[fieldName]
+            @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::changeField qualifiedName = #{qualifiedName}, _id: #{jsonStringify document._id}, $set: #{jsonStringify "#{fieldName}": newValue}", LEVELS[DEBUG])
             yield collection.updateOne
               _id: document._id
             ,
@@ -187,10 +193,9 @@ module.exports = (Module)->
       @public @async renameField: Function,
         default: (collectionName, oldFieldName, newFieldName)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::renameField qualifiedName = #{qualifiedName}, $rename: #{jsonStringify "#{oldFieldName}": newFieldName}", LEVELS[DEBUG])
           yield collection.updateMany {},
             $rename:
               "#{oldFieldName}": newFieldName
@@ -203,10 +208,9 @@ module.exports = (Module)->
 
       @public @async renameCollection: Function,
         default: (collectionName, newCollectionName)->
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           qualifiedName = @collection.collectionFullName collectionName
           newQualifiedName = @collection.collectionFullName newCollectionName
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::renameCollection qualifiedName = #{qualifiedName}, newQualifiedName = #{newQualifiedName}", LEVELS[DEBUG])
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
           yield collection.rename newQualifiedName
@@ -215,30 +219,27 @@ module.exports = (Module)->
       @public @async dropCollection: Function,
         default: (collectionName)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           if (yield voDB.listCollections(name: qualifiedName).toArray()).length isnt 0
+            @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::dropCollection qualifiedName = #{qualifiedName}", LEVELS[DEBUG])
             yield voDB.dropCollection qualifiedName
           yield return
 
       @public @async dropEdgeCollection: Function,
         default: (collectionName1, collectionName2)->
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
           if (yield voDB.listCollections(name: qualifiedName).toArray()).length isnt 0
+            @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::dropEdgeCollection qualifiedName = #{qualifiedName}", LEVELS[DEBUG])
             yield voDB.dropCollection qualifiedName
           yield return
 
       @public @async removeField: Function,
         default: (collectionName, fieldName)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::removeField qualifiedName = #{qualifiedName}, $unset: #{jsonStringify "#{fieldName}": ''}", LEVELS[DEBUG])
           yield collection.updateMany {},
             $unset:
               "#{fieldName}": ''
@@ -248,8 +249,6 @@ module.exports = (Module)->
       @public @async removeIndex: Function,
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
           indexName = options.name
@@ -263,21 +262,22 @@ module.exports = (Module)->
               background: options.background
               name: options.name
           if yield collection.indexExists indexName
+            @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::removeIndex qualifiedName = #{qualifiedName}, indexName = #{indexName}, indexFields = #{jsonStringify indexFields}, options = #{jsonStringify options}", LEVELS[DEBUG])
             yield collection.dropIndex indexName
           yield return
 
       @public @async removeTimestamps: Function,
         default: (collectionName, options)->
           qualifiedName = @collection.collectionFullName collectionName
-          # {dbName} = @collection.getData().mongodb
-          # voDB = yield (yield @collection.connection).db dbName
           voDB = yield @collection.connection
           collection = yield voDB.collection qualifiedName
+          timestamps =
+            createdAt: null
+            updatedAt: null
+            deletedAt: null
+          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::removeTimestamps qualifiedName = #{qualifiedName}, $unset: #{jsonStringify timestamps}", LEVELS[DEBUG])
           yield collection.updateMany {},
-            $unset:
-              createdAt: null
-              updatedAt: null
-              deletedAt: null
+            $unset: timestamps
           , w: 1
           yield return
 
