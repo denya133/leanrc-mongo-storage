@@ -1,4 +1,3 @@
-_  = require 'lodash'
 
 
 module.exports = (Module)->
@@ -8,6 +7,7 @@ module.exports = (Module)->
     Collection
     CoreObject
     # CursorInterface
+    Utils: { _ }
   } = Module::
 
   class MongoCursor extends CoreObject
