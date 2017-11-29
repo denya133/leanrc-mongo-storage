@@ -1,8 +1,6 @@
-_               = require 'lodash'
 {MongoClient}   = require 'mongodb'
 {GridFSBucket}  = require 'mongodb'
 Parser          = require 'mongo-parse' #mongo-parse@2.0.2
-moment          = require 'moment'
 
 
 ###
@@ -30,13 +28,14 @@ module.exports = (Module)->
     # QueryableCollectionMixinInterface
     PromiseInterface
     Query
+    Cursor
     MongoCursor
     LogMessage: {
       SEND_TO_LOG
       LEVELS
       DEBUG
     }
-    Utils: { co, jsonStringify }
+    Utils: { _, co, jsonStringify, moment }
   } = Module::
 
   _connection = null
@@ -140,7 +139,7 @@ module.exports = (Module)->
           voQuery = @parseFilter Parser.parse query
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeBy ns = #{stats.ns}, voQuery = #{jsonStringify voQuery}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find voQuery
-          yield return Module::MongoCursor.new @, voNativeCursor
+          yield return MongoCursor.new @, voNativeCursor
 
       @public @async takeMany: Function,
         default: (ids)->
@@ -148,7 +147,7 @@ module.exports = (Module)->
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeMany ns = #{stats.ns}, ids = #{jsonStringify ids}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find {id: $in: ids}
-          yield return Module::MongoCursor.new @, voNativeCursor
+          yield return MongoCursor.new @, voNativeCursor
 
       @public @async takeAll: Function,
         default: ->
@@ -156,7 +155,7 @@ module.exports = (Module)->
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeAll ns = #{stats.ns}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find()
-          yield return Module::MongoCursor.new @, voNativeCursor
+          yield return MongoCursor.new @, voNativeCursor
 
       @public @async override: Function,
         default: (id, aoRecord)->
@@ -477,7 +476,7 @@ module.exports = (Module)->
             if voNativeCursor?
               MongoCursor.new null, voNativeCursor
             else
-              Module::Cursor.new null, []
+              Cursor.new null, []
           else
             MongoCursor.new @, voNativeCursor
           return voCursor

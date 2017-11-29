@@ -1,8 +1,5 @@
 
 
-_             = require 'lodash'
-
-
 ###
 ```coffee
 module.exports = (Module)->
@@ -62,7 +59,7 @@ module.exports = (Module)->
       LEVELS
       DEBUG
     }
-    Utils: { jsonStringify }
+    Utils: { _, jsonStringify }
   } = Module::
 
   Module.defineMixin Migration, (BaseClass) ->
