@@ -50,6 +50,15 @@ module.exports = (Module)->
       ipoCollection       = @private collection: PromiseInterface
       ipoBucket           = @private bucket: PromiseInterface
 
+      wrapReference = (value)->
+        if _.isString(value)
+          if /^\@doc\./.test value
+            value.replace '@doc.', ''
+          else
+            value.replace '@', ''
+        else
+          value
+
       @public connection: PromiseInterface,
         get: ->
           _connection ?= co =>
@@ -133,12 +142,25 @@ module.exports = (Module)->
             yield return
 
       @public @async takeBy: Function,
-        default: (query)->
+        default: (query, options = {})->
           collection = yield @collection
           stats = yield collection.stats()
           voQuery = @parseFilter Parser.parse query
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::takeBy ns = #{stats.ns}, voQuery = #{jsonStringify voQuery}", LEVELS[DEBUG])
           voNativeCursor = yield collection.find voQuery
+          if (vnLimit = options.$limit)?
+            voNativeCursor = voNativeCursor.limit vnLimit
+          if (vnOffset = options.$offset)?
+            voNativeCursor = voNativeCursor.skip vnOffset
+          if (voSort = options.$sort)?
+            voNativeCursor = voNativeCursor.sort voSort.reduce (result, item)->
+              for own asRef, asSortDirect of item
+                result[wrapReference asRef] = if asSortDirect is 'ASC'
+                  1
+                else
+                  -1
+              result
+            , {}
           yield return MongoCursor.new @, voNativeCursor
 
       @public @async takeMany: Function,
@@ -195,15 +217,6 @@ module.exports = (Module)->
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::length ns = #{stats.ns}", LEVELS[DEBUG])
           yield return stats.count
-
-      wrapReference = (value)->
-        if _.isString(value)
-          if /^\@doc\./.test value
-            value.replace '@doc.', ''
-          else
-            value.replace '@', ''
-        else
-          value
 
       buildIntervalQuery = (aoKey, aoInterval, aoIntervalSize, aoDirect)->
         voIntervalStart = aoInterval.startOf(aoIntervalSize).toISOString()
