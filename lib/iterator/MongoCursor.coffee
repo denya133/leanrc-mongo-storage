@@ -170,4 +170,4 @@ module.exports = (Module)->
         @[ipoCollection] = aoCollection
         @[ipoCursor] = aoCursor
 
-  MongoCursor.initialize()
+    @initialize()

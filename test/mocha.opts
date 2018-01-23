@@ -1,8 +1,6 @@
---compilers coffee:coffee-script/register
+--require coffeescript/register
 --reporter spec
 --check-leaks
 --growl
-test/lib/
-test/lib/iterator/
-test/lib/mixins/
-test/
+test/lib/iterator/*.coffee
+test/lib/mixins/*.coffee

@@ -62,8 +62,8 @@ module.exports = (Module)->
     Utils: { _, jsonStringify }
   } = Module::
 
-  Module.defineMixin Migration, (BaseClass) ->
-    class MongoMigrationMixin extends BaseClass
+  Module.defineMixin 'MongoMigrationMixin', (BaseClass = Migration) ->
+    class extends BaseClass
       @inheritProtected()
 
       @public @async createCollection: Function,
@@ -279,4 +279,4 @@ module.exports = (Module)->
           yield return
 
 
-    MongoMigrationMixin.initializeMixin()
+      @initializeMixin()

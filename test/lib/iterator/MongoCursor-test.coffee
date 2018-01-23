@@ -6,25 +6,32 @@ LeanRC              = require 'LeanRC'
 { co }              = LeanRC::Utils
 { MongoClient }     = require 'mongodb'
 
-createModuleClass = (root = __dirname) ->
-  class Test extends LeanRC
+createModuleClass = (root = __dirname, name = 'Test') ->
+  TestModule = class extends LeanRC
+    console.log '############', @inheritProtected
     @inheritProtected()
     @include MongoStorage
     @root root
-  Test.initialize()
+    @initialize()
+  Reflect.defineProperty TestModule, 'name', value: name
+  TestModule
 
-createCollectionClass = (Module) ->
-  class TestCollection extends Module::Collection
+createCollectionClass = (Module, name = 'TestCollection') ->
+  TestCollection = class extends Module::Collection
     @inheritProtected()
     @module Module
-  TestCollection.initialize()
+    @initialize()
+  Reflect.defineProperty TestCollection, 'name', value: name
+  TestCollection
 
-createRecordClass = (Module) ->
-  class TestRecord extends Module::Record
+createRecordClass = (Module, name = 'TestRecord') ->
+  TestRecord = class extends Module::Record
     @inheritProtected()
     @module Module
     @attribute data: String, default: ''
-  TestRecord.initialize()
+    @initialize()
+  Reflect.defineProperty TestRecord, 'name', value: name
+  TestRecord
 
 
 describe 'MongoCursor', ->
@@ -53,8 +60,17 @@ describe 'MongoCursor', ->
   describe '.new', ->
     it 'Create MongoCursor instance with two valid params', ->
       co ->
-        Test = createModuleClass()
-        TestCollection = createCollectionClass Test
+        # Test = createModuleClass LeanRC
+        class Test extends LeanRC
+          @inheritProtected()
+          @include MongoStorage
+          @root __dirname
+          @initialize()
+        # TestCollection = createCollectionClass Test
+        class TestCollection extends Test::Collection
+          @inheritProtected()
+          @module Test
+          @initialize()
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()

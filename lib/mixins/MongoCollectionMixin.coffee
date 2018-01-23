@@ -41,8 +41,8 @@ module.exports = (Module)->
   _connection = null
   _consumers = null
 
-  Module.defineMixin Collection, (BaseClass) ->
-    class MongoCollectionMixin extends BaseClass
+  Module.defineMixin 'MongoCollectionMixin', (BaseClass = Collection) ->
+    class extends BaseClass
       @inheritProtected()
 
       # @implements QueryableCollectionMixinInterface
@@ -61,9 +61,10 @@ module.exports = (Module)->
 
       @public connection: PromiseInterface,
         get: ->
-          _connection ?= co =>
+          self = @
+          _connection ?= co ->
             credentials = ''
-            { username, password, host, port, dbName } = @getData().mongodb
+            { username, password, host, port, dbName } = self.getData().mongodb
             if username and password
               credentials =  "#{username}:#{password}@"
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
@@ -73,16 +74,18 @@ module.exports = (Module)->
 
       @public collection: PromiseInterface,
         get: ->
-          @[ipoCollection] ?= co =>
-            connection = yield @connection
-            yield return connection.collection @collectionFullName()
+          self = @
+          @[ipoCollection] ?= co ->
+            connection = yield self.connection
+            yield return connection.collection self.collectionFullName()
           @[ipoCollection]
 
       @public bucket: PromiseInterface,
         get: ->
-          @[ipoBucket] ?= co =>
-            { dbName } = @configs.mongodb
-            connection = yield @connection
+          self = @
+          @[ipoBucket] ?= co ->
+            { dbName } = self.configs.mongodb
+            connection = yield self.connection
             voDB = connection.db "#{dbName}_fs"
             yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
@@ -530,4 +533,4 @@ module.exports = (Module)->
           yield return
 
 
-    MongoCollectionMixin.initializeMixin()
+      @initializeMixin()
