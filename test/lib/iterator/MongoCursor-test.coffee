@@ -8,10 +8,9 @@ LeanRC              = require 'LeanRC'
 
 createModuleClass = (root = __dirname, name = 'Test') ->
   TestModule = class extends LeanRC
-    console.log '############', @inheritProtected
     @inheritProtected()
-    @include MongoStorage
     @root root
+    @include MongoStorage
     @initialize()
   Reflect.defineProperty TestModule, 'name', value: name
   TestModule
@@ -28,8 +27,12 @@ createRecordClass = (Module, name = 'TestRecord') ->
   TestRecord = class extends Module::Record
     @inheritProtected()
     @module Module
-    @attribute data: String, default: ''
+    @attribute data: String, { default: '' }
     @initialize()
+    @public init: Function,
+      default: (args...) ->
+        @super args...
+        @type = 'Test::TestRecord'
   Reflect.defineProperty TestRecord, 'name', value: name
   TestRecord
 
@@ -60,17 +63,8 @@ describe 'MongoCursor', ->
   describe '.new', ->
     it 'Create MongoCursor instance with two valid params', ->
       co ->
-        # Test = createModuleClass LeanRC
-        class Test extends LeanRC
-          @inheritProtected()
-          @include MongoStorage
-          @root __dirname
-          @initialize()
-        # TestCollection = createCollectionClass Test
-        class TestCollection extends Test::Collection
-          @inheritProtected()
-          @module Test
-          @initialize()
+        Test = createModuleClass LeanRC
+        TestCollection = createCollectionClass Test
         testCollectionInstance = TestCollection.new()
         dbCollection = db.collection "test_thames_travel"
         nativeCursor = yield dbCollection.find()
