@@ -70,7 +70,6 @@ module.exports = (Module)->
               credentials =  "#{username}:#{password}@"
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
             connection = yield MongoClient.connect db_url
-            # console.log 'new connection created'
             yield return connection
           _connection
 
@@ -101,7 +100,6 @@ module.exports = (Module)->
           do => @connection
           _consumers ?= 0
           _consumers++
-          # console.log 'consumers:', _consumers
           return
 
       @public @async onRemove: Function,
@@ -112,7 +110,6 @@ module.exports = (Module)->
             connection = yield _connection
             yield connection.close(true)
             _connection = undefined
-          # console.log 'consumers:', _consumers
           yield return
 
       @public @async push: Function,
