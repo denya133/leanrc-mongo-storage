@@ -64,11 +64,13 @@ module.exports = (Module)->
           self = @
           _connection ?= co ->
             credentials = ''
-            { username, password, host, port, dbName } = self.getData().mongodb
+            mongodb = self.getData().mongodb ? self.configs.mongodb
+            { username, password, host, port, dbName } = mongodb
             if username and password
               credentials =  "#{username}:#{password}@"
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
             connection = yield MongoClient.connect db_url
+            # console.log 'new connection created'
             yield return connection
           _connection
 
@@ -84,7 +86,8 @@ module.exports = (Module)->
         get: ->
           self = @
           @[ipoBucket] ?= co ->
-            { dbName } = self.configs.mongodb
+            mongodb = self.getData().mongodb ? self.configs.mongodb
+            { dbName } = mongodb
             connection = yield self.connection
             voDB = connection.db "#{dbName}_fs"
             yield return new GridFSBucket voDB,
@@ -98,6 +101,7 @@ module.exports = (Module)->
           do => @connection
           _consumers ?= 0
           _consumers++
+          # console.log 'consumers:', _consumers
           return
 
       @public @async onRemove: Function,
@@ -108,6 +112,7 @@ module.exports = (Module)->
             connection = yield _connection
             yield connection.close(true)
             _connection = undefined
+          # console.log 'consumers:', _consumers
           yield return
 
       @public @async push: Function,
@@ -463,7 +468,7 @@ module.exports = (Module)->
                   voQuery.pipeline.push $group:
                     _id : '$$CURRENT'
 
-          voQuery.isCustomReturn = isCustomReturn
+          voQuery.isCustomReturn = isCustomReturn ? no
           yield return voQuery
 
       @public @async executeQuery: Function,
@@ -494,7 +499,7 @@ module.exports = (Module)->
             else
               Cursor.new null, []
           else
-            MongoCursor.new @, voNativeCursor
+            MongoCursor.new @, voNativeCursor ? []
           return voCursor
 
       @public @async createFileWriteStream: Function,
