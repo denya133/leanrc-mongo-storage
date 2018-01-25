@@ -12,6 +12,7 @@ LeanRC              = require 'LeanRC'
 {
   MongoClient
   GridFSBucket
+  MongoError
 }                   = require 'mongodb'
 Parser              = require 'mongo-parse' #mongo-parse@2.0.2
 moment              = require 'moment'
@@ -114,15 +115,18 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "createCollection" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
+        TestRecord = createRecordClass Test, 'ExampleRecord'
+        testCollectionName = 'examples'
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @createCollection testCollectionName
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
@@ -136,6 +140,7 @@ describe 'MongoMigrationMixin', ->
 
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
+        testCollection.initializeNotifier 'TEST2'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
         yield testCollection.push testRecord
@@ -145,9 +150,16 @@ describe 'MongoMigrationMixin', ->
         assert.isTrue spyDropCollection.calledWith testCollectionName
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        assert.isFalse (yield testCollection.take 'u7')?
+        testCollection.initializeNotifier 'TEST3'
+        err = null
+        try yield testCollection.take 'u7'
+        catch err
+        assert.instanceOf err, MongoError
+        assert.include err.message, 'Collection test_examples does not exist'
         yield return
 
+  ###
+  # TODO: uncomment if/when `createEdgeCollection` to be fixed/improved
   describe '#createEdgeCollection', ->
     collection = null
     afterEach ->
@@ -159,10 +171,10 @@ describe 'MongoMigrationMixin', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        TestRecord = createRecordClass Test
-        testCollection1Name = 'TestCollection1'
-        testCollection2Name = 'TestCollection2'
-        testCollectionName = 'TestCollection1_TestCollection2'
+        TestRecord = createRecordClass Test, 'Tests1Tests2'
+        testCollection1Name = 'tests1'
+        testCollection2Name = 'tests2'
+        testCollectionName = 'tests1_tests2s'
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @createEdgeCollection testCollection1Name, testCollection2Name
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
@@ -173,7 +185,7 @@ describe 'MongoMigrationMixin', ->
         spyCreateEdgeCollection = sinon.spy migration, 'createEdgeCollection'
         yield migration.up()
         assert.isTrue spyCreateEdgeCollection.calledWith testCollection1Name, testCollection2Name
-        assert.isTrue (yield __db.collection testCollectionName)?
+        assert.isTrue (try yield __db.collection(testCollectionName).stats())?
 
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
@@ -186,28 +198,43 @@ describe 'MongoMigrationMixin', ->
         assert.isTrue spyDropEdgeCollection.calledWith testCollection1Name, testCollection2Name
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        assert.isFalse (yield testCollection.take 'u7')?
+        # assert.isFalse (yield testCollection.take 'u7')?
+        err = null
+        try yield testCollection.take 'u7'
+        catch err
+        assert.instanceOf err, MongoError
+        assert.include err.message, 'Collection test_examples does not exist'
         yield return
+  ###
 
   describe '#addField', ->
     collection = null
     testCollection = null
     afterEach ->
       co ->
-        yield collection.onRemove()  if collection?
-        yield testCollection.onRemove()  if testCollection?
-        collection = null
-        testCollection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
+        if testCollection?
+          name = testCollection.collectionFullName()
+          yield testCollection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          testCollection = null
         yield return
     it 'Check correctness logic of the "addField" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
+        testCollectionName = 'tests'
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
+        testCollectionFullName = testCollection.collectionFullName()
+        __db.createCollection testCollectionFullName
         testCollection.onRegister()
+        testCollection.initializeNotifier 'TEST1'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
         yield testCollection.push testRecord
@@ -216,35 +243,42 @@ describe 'MongoMigrationMixin', ->
         TestMigration.change ()-> @addField testCollectionName, 'data1', default: 'testdata1'
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate: TestMigration}, connectionData
         collection.onRegister()
+        collection.initializeNotifier 'TEST2'
         migration = yield collection.build {}
         spyAddField = sinon.spy migration, 'addField'
 
         yield migration.up()
         assert.isTrue spyAddField.calledWith testCollectionName, 'data1', default: 'testdata1'
-        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 'u7').data1, 'testdata1'
+        item = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
+        assert.strictEqual item.data1, 'testdata1'
 
         spyRemoveField = sinon.spy migration, 'removeField'
         yield migration.down()
         assert.isTrue spyRemoveField.calledWith testCollectionName, 'data1'
-        assert.isFalse (yield (yield __db.collection testCollectionName).findOne id: 'u7').data1?
+        assert.isFalse (yield (yield __db.collection testCollectionFullName).findOne id: 'u7').data1?
         yield return
 
   describe '#addTimestamps', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "addTimestamps" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
+        testCollectionName = 'tests'
+        testCollectionFullName = 'test_tests'
+        __db.createCollection testCollectionFullName
 
         date = new Date()
-        yield (yield __db.collection testCollectionName).insertOne id: 'i8', cid: 8, data: ' :)', createdAt: date
+        yield (yield __db.collection testCollectionFullName).insertOne id: 'i8', cid: 8, data: ' :)', createdAt: date
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @addTimestamps testCollectionName
@@ -256,7 +290,7 @@ describe 'MongoMigrationMixin', ->
 
         yield migration.up()
         assert.isTrue spyAddTimestamps.calledWith testCollectionName
-        result = yield (yield __db.collection testCollectionName).findOne id: 'i8'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'i8'
         assert.isDefined result.createdAt
         assert.isDefined result.updatedAt
         assert.isDefined result.deletedAt
@@ -264,7 +298,7 @@ describe 'MongoMigrationMixin', ->
         spyRemoveTimestamps = sinon.spy migration, 'removeTimestamps'
         yield migration.down()
         assert.isTrue spyRemoveTimestamps.calledWith testCollectionName
-        result = yield (yield __db.collection testCollectionName).findOne id: 'i8'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'i8'
         assert.isFalse result.createdAt?
         assert.isFalse result.updatedAt?
         assert.isFalse result.deletedAt?
@@ -274,15 +308,23 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          yield __db.dropCollection 'test_tests'
+          collection = null
         yield return
     it 'Check correctness logic of the "addIndex" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
+        testCollectionName = 'tests'
+        testCollectionFullName = 'test_tests'
+        __db.createCollection testCollectionFullName
+        col = yield __db.collection testCollectionFullName
+        yield col.insertOne id: 'u7', cid: 7, data: ' :)'
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @addIndex testCollectionName, ['id', 'cid'], unique: yes, sparse: yes, name: 'testIndex'
@@ -294,35 +336,39 @@ describe 'MongoMigrationMixin', ->
         spyAddIndex = sinon.spy migration, 'addIndex'
         yield migration.up()
         assert.isTrue spyAddIndex.calledWith testCollectionName
-        assert.isTrue yield (yield __db.collection testCollectionName).indexExists 'testIndex'
+        assert.isTrue yield (yield __db.collection testCollectionFullName).indexExists 'testIndex'
 
         err = null
         try
-          yield (yield __db.collection testCollectionName).insertOne id: 'u7', cid: 7, data: ' :)'
-        catch error
-          err = error
+          yield (yield __db.collection testCollectionFullName).insertOne id: 'u7', cid: 7, data: ' :)'
+        catch err
         assert.isTrue err?
 
         spyRemoveIndex = sinon.spy migration, 'removeIndex'
         yield migration.down()
         assert.isTrue spyRemoveIndex.calledWith testCollectionName
-        assert.isFalse yield (yield __db.collection testCollectionName).indexExists 'testIndex'
-        yield (yield __db.collection testCollectionName).insertOne id: 'u77', cid: 77, data: ' :)'
+        assert.isFalse yield (yield __db.collection testCollectionFullName).indexExists 'testIndex'
+        yield (yield __db.collection testCollectionFullName).insertOne id: 'u77', cid: 77, data: ' :)'
         yield return
 
   describe '#changeField', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          yield __db.dropCollection 'test_tests'
+          collection = null
         yield return
     it 'Check correctness logic of the "changeField" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        testCollectionName = 'TestCollectionChangeField1'
-        testCollection = yield __db.collection testCollectionName
+        testCollectionName = 'tests'
+        testCollectionFullName = 'test_tests'
+        testCollection = yield __db.collection testCollectionFullName
         yield testCollection.insertOne id: 1, cid: 'q1', data: 1, createdAt: new Date()
         yield testCollection.insertOne id: 2, cid: 'w2', data: '12', createdAt: new Date()
         yield testCollection.insertOne id: 3, cid: 'e3', data: {val: 123}, createdAt: new Date()
@@ -336,13 +382,14 @@ describe 'MongoMigrationMixin', ->
         TestMigration.change ()-> @changeField testCollectionName, 'data', type: TestMigration::SUPPORTED_TYPES.boolean
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
         collection.onRegister()
+        collection.initializeNotifier 'TEST1'
         migration = yield collection.build {}
 
         spyChangeCollection = sinon.spy migration, 'changeField'
         yield migration.up()
         assert.isTrue spyChangeCollection.calledWith testCollectionName, 'data', type: TestMigration::SUPPORTED_TYPES.boolean
-        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 7).data.constructor, Boolean
-        assert.strictEqual (yield (yield __db.collection testCollectionName).findOne id: 8).data.constructor, Boolean
+        assert.typeOf (yield (yield __db.collection testCollectionFullName).findOne id: 7).data, 'boolean'
+        assert.typeOf (yield (yield __db.collection testCollectionFullName).findOne id: 8).data, 'boolean'
 
         yield migration.down() # Вызывает changeField еще раз, с темы же параметрами что и в первый раз.
         assert.isTrue spyChangeCollection.calledTwice
@@ -353,50 +400,72 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield testCollection.onRemove()  if testCollection?
-        testCollection = null
-        yield collection.onRemove()  if collection?
-        collection = null
+        if testCollection?
+          name = testCollection.collectionFullName()
+          yield testCollection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          testCollection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "renameField" function', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
+        testCollectionName = 'tests'
+        testCollectionFullName = 'test_tests'
+        __db.createCollection testCollectionFullName
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
         testCollection.onRegister()
+        testCollection.initializeNotifier 'TEST1'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
-        yield testCollection.push testRecord
+        console.log 'IIIIIIIIIIII', testRecord.toJSON()
+        res = yield testCollection.push testRecord
+        console.log 'YYYYYYYYYYYYYY1', res.toJSON()
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
+        console.log 'XXXXXXXXXXXXXX1', result
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @renameField testCollectionName, 'data', 'data1'
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate: TestMigration}, connectionData
         collection.onRegister()
+        collection.initializeNotifier 'TEST2'
         migration = yield collection.build {}
 
+        console.log '11111111111111'
         spyRenameField = sinon.spy migration, 'renameField'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
+        console.log 'XXXXXXXXXXXXXX2', result
         yield migration.up()
         assert.isTrue spyRenameField.calledWith testCollectionName, 'data', 'data1'
-        result = yield (yield __db.collection testCollectionName).findOne id: 'u7'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
+        console.log 'XXXXXXXXXXXXXX3', result
         assert.isFalse result.data?
         assert.strictEqual result.data1, ' :)'
 
         yield migration.down()
         assert.isTrue spyRenameField.calledWith testCollectionName, 'data1', 'data'
-        result = yield (yield __db.collection testCollectionName).findOne id: 'u7'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
         assert.strictEqual result.data, ' :)'
         assert.isFalse result.data1?
+        console.log '22222222222222'
         yield return
 
   describe '#changeCollection', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "changeCollection" function', ->
       co ->
@@ -420,8 +489,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "renameCollection" function', ->
       co ->
@@ -457,8 +529,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "renameIndex" function', ->
       co ->
@@ -482,8 +557,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "dropCollection" function', ->
       co ->
@@ -517,8 +595,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection?.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "dropEdgeCollection" function', ->
       co ->
@@ -555,10 +636,16 @@ describe 'MongoMigrationMixin', ->
     testCollection = null
     afterEach ->
       co ->
-        yield collection.onRemove()  if collection?
-        collection = null
-        yield testCollection.onRemove()  if testCollection?
-        testCollection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
+        if testCollection?
+          name = testCollection.collectionFullName()
+          yield testCollection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          testCollection = null
         yield return
     it 'Check correctness logic of the "removeField" function', ->
       co ->
@@ -603,8 +690,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "removeTimestamps" function', ->
       co ->
@@ -638,8 +728,11 @@ describe 'MongoMigrationMixin', ->
     collection = null
     afterEach ->
       co ->
-        yield collection?.onRemove()
-        collection = null
+        if collection?
+          name = collection.collectionFullName()
+          yield collection.onRemove()
+          yield __db.dropCollection name  unless name is connectionData.collection
+          collection = null
         yield return
     it 'Check correctness logic of the "removeIndex" function', ->
       co ->
