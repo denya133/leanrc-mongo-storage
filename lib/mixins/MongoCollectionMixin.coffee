@@ -78,16 +78,11 @@ module.exports = (Module)->
           self = @
           @[ipoCollection] ?= co ->
             connection = yield self.connection
+            name = self.collectionFullName()
             yield Module::Promise.new (resolve, reject) ->
-              connection.collection self.collectionFullName(),
-                strict: yes,
-                (err, col) ->
-                  if err?
-                    console.warn 'Collection no exists:', self.collectionFullName()
-                    reject err
-                  else
-                    resolve col
-                  return
+              connection.collection name, strict: yes, (err, col) ->
+                if err? then reject err else resolve col
+                return
               return
           @[ipoCollection]
 
@@ -126,22 +121,15 @@ module.exports = (Module)->
         default: (aoRecord)->
           collection = yield @collection
           ipoMultitonKey = @constructor.instanceVariables['~multitonKey'].pointer
-          console.log 'MULTITON KEY', @[ipoMultitonKey]
           stats = yield collection.stats()
           snapshot = @serialize aoRecord
-          console.log 'COLLECTION', @collectionFullName()
           raw1 = yield collection.findOne id: $eq: snapshot.id
-          console.log 'FFFFFFFFFFFFFFFF', raw1
-          console.log 'SSSSSSSSSSSSSSSSS', snapshot
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::push ns = #{stats.ns}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.insertOne snapshot,
             w: "majority"
             j: yes
             wtimeout: 500
-          raw = yield collection.findOne id: $eq: snapshot.id
-          console.log 'RRRRRRRRRRRRR', raw
-          # return @normalize yield collection.findOne id: $eq: snapshot.id
-          return @normalize raw
+          return @normalize yield collection.findOne id: $eq: snapshot.id
 
       @public @async remove: Function,
         default: (id)->
