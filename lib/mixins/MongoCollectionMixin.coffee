@@ -41,8 +41,8 @@ module.exports = (Module)->
   _connection = null
   _consumers = null
 
-  Module.defineMixin Collection, (BaseClass) ->
-    class MongoCollectionMixin extends BaseClass
+  Module.defineMixin 'MongoCollectionMixin', (BaseClass = Collection) ->
+    class extends BaseClass
       @inheritProtected()
 
       # @implements QueryableCollectionMixinInterface
@@ -61,9 +61,11 @@ module.exports = (Module)->
 
       @public connection: PromiseInterface,
         get: ->
-          _connection ?= co =>
+          self = @
+          _connection ?= co ->
             credentials = ''
-            { username, password, host, port, dbName } = @getData().mongodb
+            mongodb = self.getData().mongodb ? self.configs.mongodb
+            { username, password, host, port, dbName } = mongodb
             if username and password
               credentials =  "#{username}:#{password}@"
             db_url = "mongodb://#{credentials}#{host}:#{port}/#{dbName}?authSource=admin"
@@ -73,16 +75,24 @@ module.exports = (Module)->
 
       @public collection: PromiseInterface,
         get: ->
-          @[ipoCollection] ?= co =>
-            connection = yield @connection
-            yield return connection.collection @collectionFullName()
+          self = @
+          @[ipoCollection] ?= co ->
+            connection = yield self.connection
+            name = self.collectionFullName()
+            yield Module::Promise.new (resolve, reject) ->
+              connection.collection name, strict: yes, (err, col) ->
+                if err? then reject err else resolve col
+                return
+              return
           @[ipoCollection]
 
       @public bucket: PromiseInterface,
         get: ->
-          @[ipoBucket] ?= co =>
-            { dbName } = @configs.mongodb
-            connection = yield @connection
+          self = @
+          @[ipoBucket] ?= co ->
+            mongodb = self.getData().mongodb ? self.configs.mongodb
+            { dbName } = mongodb
+            connection = yield self.connection
             voDB = connection.db "#{dbName}_fs"
             yield return new GridFSBucket voDB,
               chunkSizeBytes: 64512
@@ -110,8 +120,10 @@ module.exports = (Module)->
       @public @async push: Function,
         default: (aoRecord)->
           collection = yield @collection
+          ipoMultitonKey = @constructor.instanceVariables['~multitonKey'].pointer
           stats = yield collection.stats()
           snapshot = @serialize aoRecord
+          raw1 = yield collection.findOne id: $eq: snapshot.id
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::push ns = #{stats.ns}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.insertOne snapshot,
             w: "majority"
@@ -460,7 +472,7 @@ module.exports = (Module)->
                   voQuery.pipeline.push $group:
                     _id : '$$CURRENT'
 
-          voQuery.isCustomReturn = isCustomReturn
+          voQuery.isCustomReturn = isCustomReturn ? no
           yield return voQuery
 
       @public @async executeQuery: Function,
@@ -491,7 +503,7 @@ module.exports = (Module)->
             else
               Cursor.new null, []
           else
-            MongoCursor.new @, voNativeCursor
+            MongoCursor.new @, voNativeCursor ? []
           return voCursor
 
       @public @async createFileWriteStream: Function,
@@ -530,4 +542,4 @@ module.exports = (Module)->
           yield return
 
 
-    MongoCollectionMixin.initializeMixin()
+      @initializeMixin()

@@ -2,8 +2,8 @@ crypto = require 'crypto'
 
 
 module.exports = (Module)->
-  Module.defineMixin Module::Serializer, (BaseClass) ->
-    class MongoSerializerMixin extends BaseClass
+  Module.defineMixin 'MongoSerializerMixin', (BaseClass = Module::Serializer) ->
+    class extends BaseClass
       @inheritProtected()
 
       @public normalize: Function,
@@ -25,4 +25,4 @@ module.exports = (Module)->
           serialized
 
 
-    MongoSerializerMixin.initializeMixin()
+      @initializeMixin()

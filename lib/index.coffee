@@ -35,7 +35,7 @@ module.exports = TestApp.initialize().freeze()
 ###
 
 Extension = (BaseClass) ->
-  class MongoStorage extends BaseClass
+  class extends BaseClass
     @inheritProtected()
 
     require('./iterator/MongoCursor') @Module
@@ -43,11 +43,10 @@ Extension = (BaseClass) ->
     require('./mixins/MongoCollectionMixin') @Module
     require('./mixins/MongoSerializerMixin') @Module
     require('./mixins/MongoMigrationMixin') @Module
-  MongoStorage.initializeMixin()
+    @initializeMixin()
 
-sample = Extension LeanRC#::Module
-Reflect.defineProperty Extension, 'reification',
-  value: sample
+Reflect.defineProperty Extension, 'name',
+  value: 'MongoStorage'
 
 
 module.exports = Extension
