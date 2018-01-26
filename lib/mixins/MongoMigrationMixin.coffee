@@ -62,6 +62,13 @@ module.exports = (Module)->
     Utils: { _, jsonStringify }
   } = Module::
 
+  getCollection = (db, collectionFullName) ->
+    Module::Promise.new (resolve, reject) ->
+      db.collection collectionFullName, strict: yes, (err, col) ->
+        if err? then reject err else resolve col
+        return
+      return
+
   Module.defineMixin 'MongoMigrationMixin', (BaseClass = Migration) ->
     class extends BaseClass
       @inheritProtected()
@@ -98,7 +105,7 @@ module.exports = (Module)->
             initial = null
           voDB = yield @collection.connection
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addField qualifiedName = #{qualifiedName}, $set: #{jsonStringify "#{fieldName}": initial}", LEVELS[DEBUG])
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           yield collection.updateMany {},
             $set:
               "#{fieldName}": initial
@@ -109,7 +116,7 @@ module.exports = (Module)->
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           indexFields = {}
           fieldNames.forEach (fieldName)->
             indexFields[fieldName] = 1
@@ -126,7 +133,7 @@ module.exports = (Module)->
         default: (collectionName, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           timestamps =
             createdAt: null
             updatedAt: null
@@ -163,7 +170,7 @@ module.exports = (Module)->
           } = Module::Migration::SUPPORTED_TYPES
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           cursor = yield collection.find().batchSize(1)
           while yield cursor.hasNext()
             document = yield cursor.next()
@@ -191,7 +198,7 @@ module.exports = (Module)->
         default: (collectionName, oldFieldName, newFieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::renameField qualifiedName = #{qualifiedName}, $rename: #{jsonStringify "#{oldFieldName}": newFieldName}", LEVELS[DEBUG])
           yield collection.updateMany {},
             $rename:
@@ -209,7 +216,7 @@ module.exports = (Module)->
           newQualifiedName = @collection.collectionFullName newCollectionName
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::renameCollection qualifiedName = #{qualifiedName}, newQualifiedName = #{newQualifiedName}", LEVELS[DEBUG])
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           yield collection.rename newQualifiedName
           yield return
 
@@ -235,7 +242,7 @@ module.exports = (Module)->
         default: (collectionName, fieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::removeField qualifiedName = #{qualifiedName}, $unset: #{jsonStringify "#{fieldName}": ''}", LEVELS[DEBUG])
           yield collection.updateMany {},
             $unset:
@@ -247,7 +254,7 @@ module.exports = (Module)->
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           indexName = options.name
           unless indexName?
             indexFields = {}
@@ -267,7 +274,7 @@ module.exports = (Module)->
         default: (collectionName, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
-          collection = yield voDB.collection qualifiedName
+          collection = yield getCollection voDB, qualifiedName
           timestamps =
             createdAt: null
             updatedAt: null

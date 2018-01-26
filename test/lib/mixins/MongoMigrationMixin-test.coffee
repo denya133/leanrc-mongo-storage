@@ -210,6 +210,12 @@ describe 'MongoMigrationMixin', ->
   describe '#addField', ->
     collection = null
     testCollection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -228,11 +234,8 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'tests'
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        testCollectionFullName = testCollection.collectionFullName()
-        __db.createCollection testCollectionFullName
         testCollection.onRegister()
         testCollection.initializeNotifier 'TEST1'
         date = new Date()
@@ -260,6 +263,12 @@ describe 'MongoMigrationMixin', ->
 
   describe '#addTimestamps', ->
     collection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -273,9 +282,6 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'tests'
-        testCollectionFullName = 'test_tests'
-        __db.createCollection testCollectionFullName
 
         date = new Date()
         yield (yield __db.collection testCollectionFullName).insertOne id: 'i8', cid: 8, data: ' :)', createdAt: date
@@ -306,6 +312,12 @@ describe 'MongoMigrationMixin', ->
 
   describe '#addIndex', ->
     collection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -320,9 +332,6 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'tests'
-        testCollectionFullName = 'test_tests'
-        __db.createCollection testCollectionFullName
         col = yield __db.collection testCollectionFullName
         yield col.insertOne id: 'u7', cid: 7, data: ' :)'
 
@@ -425,11 +434,8 @@ describe 'MongoMigrationMixin', ->
         testCollection.initializeNotifier 'TEST1'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
-        console.log 'IIIIIIIIIIII', testRecord.toJSON()
         res = yield testCollection.push testRecord
-        console.log 'YYYYYYYYYYYYYY1', res.toJSON()
         result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
-        console.log 'XXXXXXXXXXXXXX1', result
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @renameField testCollectionName, 'data', 'data1'
@@ -438,14 +444,11 @@ describe 'MongoMigrationMixin', ->
         collection.initializeNotifier 'TEST2'
         migration = yield collection.build {}
 
-        console.log '11111111111111'
         spyRenameField = sinon.spy migration, 'renameField'
         result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
-        console.log 'XXXXXXXXXXXXXX2', result
         yield migration.up()
         assert.isTrue spyRenameField.calledWith testCollectionName, 'data', 'data1'
         result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
-        console.log 'XXXXXXXXXXXXXX3', result
         assert.isFalse result.data?
         assert.strictEqual result.data1, ' :)'
 
@@ -454,7 +457,6 @@ describe 'MongoMigrationMixin', ->
         result = yield (yield __db.collection testCollectionFullName).findOne id: 'u7'
         assert.strictEqual result.data, ' :)'
         assert.isFalse result.data1?
-        console.log '22222222222222'
         yield return
 
   describe '#changeCollection', ->
@@ -487,6 +489,15 @@ describe 'MongoMigrationMixin', ->
 
   describe '#renameCollection', ->
     collection = null
+    oldTestCollectionName = 'tests'
+    newTestCollectionName = 'examples'
+    oldTestCollectionFullName = 'test_tests'
+    newTestCollectionFullName = 'test_examples'
+    before -> co ->
+      yield __db.createCollection oldTestCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection oldTestCollectionFullName
+      try yield __db.dropCollection newTestCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -499,29 +510,27 @@ describe 'MongoMigrationMixin', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        testCollectionName = 'TestCollectionRename1'
-        testCollectionName2 = 'TestCollectionRename2'
         TestMigration = createMigrationClass Test
-        TestMigration.change ()-> @renameCollection testCollectionName, testCollectionName2
+        TestMigration.change ()-> @renameCollection oldTestCollectionName, newTestCollectionName
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
         collection.onRegister()
         collection.initializeNotifier 'TEST1'
         migration = yield collection.build {}
 
         date = new Date()
-        yield (yield __db.collection testCollectionName).insertOne id: 'a11', cid: 11, data: ' :)', createdAt: date, updatedAt: date
+        yield (yield __db.collection oldTestCollectionFullName).insertOne id: 'a11', cid: 11, data: ' :)', createdAt: date, updatedAt: date
 
         spyRenameCollection = sinon.spy migration, 'renameCollection'
         yield migration.up()
-        assert.isTrue spyRenameCollection.calledWith testCollectionName, testCollectionName2
-        assert.lengthOf (yield __db.listCollections(name: testCollectionName).toArray()), 0
-        result = yield (yield __db.collection testCollectionName2).findOne id: 'a11'
+        assert.isTrue spyRenameCollection.calledWith oldTestCollectionName, newTestCollectionName
+        assert.lengthOf (yield __db.listCollections(name: oldTestCollectionFullName).toArray()), 0
+        result = yield (yield __db.collection newTestCollectionFullName).findOne id: 'a11'
         assert.strictEqual result.cid, 11
 
         yield migration.down()
-        assert.isTrue spyRenameCollection.calledWith testCollectionName2, testCollectionName
-        assert.lengthOf (yield __db.listCollections(name: testCollectionName2).toArray()), 0
-        result = yield (yield __db.collection testCollectionName).findOne id: 'a11'
+        assert.isTrue spyRenameCollection.calledWith newTestCollectionName, oldTestCollectionName
+        assert.lengthOf (yield __db.listCollections(name: newTestCollectionFullName).toArray()), 0
+        result = yield (yield __db.collection oldTestCollectionFullName).findOne id: 'a11'
         assert.strictEqual result.cid, 11
         yield return
 
@@ -555,6 +564,12 @@ describe 'MongoMigrationMixin', ->
 
   describe '#dropCollection', ->
     collection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -568,16 +583,17 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @dropCollection testCollectionName
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate:TestMigration}, connectionData
         collection.onRegister()
+        collection.initializeNotifier 'TEST1'
         migration = yield collection.build {}
         spyDropCollection = sinon.spy migration, 'dropCollection'
 
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
+        testCollection.initializeNotifier 'TEST2'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
         yield testCollection.push testRecord
@@ -586,11 +602,12 @@ describe 'MongoMigrationMixin', ->
         assert.isTrue spyDropCollection.calledWith testCollectionName
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
-        assert.isFalse (yield testCollection.take 'u7')?
+        assert.isFalse (try yield testCollection.collection)?
 
         yield migration.down() # Вызывает dropCollection еще раз.
         yield return
 
+  ###
   describe '#dropEdgeCollection', ->
     collection = null
     afterEach ->
@@ -630,10 +647,17 @@ describe 'MongoMigrationMixin', ->
 
         yield migration.down() # Вызывает dropEdgeCollection еще раз.
         yield return
+  ###
 
   describe '#removeField', ->
     collection = null
     testCollection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -662,10 +686,10 @@ describe 'MongoMigrationMixin', ->
               @super arguments...
               @type = 'Test::TestRecord'
         TestRecord.initialize()
-        testCollectionName = 'TestCollection1'
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
         testCollection.onRegister()
+        testCollection.initializeNotifier 'TEST1'
         date = new Date()
         testRecord = TestRecord.new { id: 'o9', cid: 9, data: ' :)', createdAt: date, updatedAt: date }, collection
         yield testCollection.push testRecord
@@ -674,6 +698,7 @@ describe 'MongoMigrationMixin', ->
         TestMigration.change ()-> @removeField testCollectionName, 'data1'
         collection = TestCollection.new 'MIGRATIONS', Object.assign {}, {delegate: TestMigration}, connectionData
         collection.onRegister()
+        collection.initializeNotifier 'TEST2'
         migration = yield collection.build {}
 
         spyRemoveField = sinon.spy migration, 'removeField'
@@ -681,6 +706,7 @@ describe 'MongoMigrationMixin', ->
         assert.isTrue spyRemoveField.calledWith testCollectionName, 'data1'
         testCollection = TestCollection.new testCollectionName,
           Object.assign {}, {delegate: TestRecord}, connectionData, {collection: testCollectionName}
+        testCollection.initializeNotifier 'TEST3'
         assert.isFalse (yield testCollection.take 'o9').data1?
 
         yield migration.down() # Вызывает removeField еще раз.
@@ -688,6 +714,12 @@ describe 'MongoMigrationMixin', ->
 
   describe '#removeTimestamps', ->
     collection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -701,10 +733,9 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
 
         date = new Date()
-        yield (yield __db.collection testCollectionName).insertOne id: 'p0', cid: 0, data: ' :)', createdAt: date, updatedAt: date
+        yield (yield __db.collection testCollectionFullName).insertOne id: 'p0', cid: 0, data: ' :)', createdAt: date, updatedAt: date
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @removeTimestamps testCollectionName
@@ -716,7 +747,7 @@ describe 'MongoMigrationMixin', ->
         spyRemoveTimestamps = sinon.spy migration, 'removeTimestamps'
         yield migration.up()
         assert.isTrue spyRemoveTimestamps.calledWith testCollectionName
-        result = yield (yield __db.collection testCollectionName).findOne id: 'p0'
+        result = yield (yield __db.collection testCollectionFullName).findOne id: 'p0'
         assert.isFalse result.createdAt?
         assert.isFalse result.updatedAt?
         assert.isFalse result.deletedAt?
@@ -726,6 +757,12 @@ describe 'MongoMigrationMixin', ->
 
   describe '#removeIndex', ->
     collection = null
+    testCollectionName = 'tests'
+    testCollectionFullName = 'test_tests'
+    before -> co ->
+      yield __db.createCollection testCollectionFullName
+    after -> co ->
+      try yield __db.dropCollection testCollectionFullName
     afterEach ->
       co ->
         if collection?
@@ -739,7 +776,6 @@ describe 'MongoMigrationMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
-        testCollectionName = 'TestCollection1'
 
         TestMigration = createMigrationClass Test
         TestMigration.change ()-> @removeIndex testCollectionName, ['id', 'cid'], name: 'testIndex'
@@ -748,7 +784,7 @@ describe 'MongoMigrationMixin', ->
         collection.initializeNotifier 'TEST1'
         migration = yield collection.build {}
 
-        yield (yield __db.collection testCollectionName).ensureIndex {id: 1, cid: 1},
+        yield (yield __db.collection testCollectionFullName).ensureIndex {id: 1, cid: 1},
           unique: yes
           sparse: yes
           name: 'testIndex'
@@ -756,8 +792,8 @@ describe 'MongoMigrationMixin', ->
         spyRemoveIndex = sinon.spy migration, 'removeIndex'
         yield migration.up()
         assert.isTrue spyRemoveIndex.calledWith testCollectionName, ['id', 'cid'], name: 'testIndex'
-        assert.isFalse yield (yield __db.collection testCollectionName).indexExists 'testIndex'
-        yield (yield __db.collection testCollectionName).insertOne id: 'u777', cid: 777, data: ' :)'
+        assert.isFalse yield (yield __db.collection testCollectionFullName).indexExists 'testIndex'
+        yield (yield __db.collection testCollectionFullName).insertOne id: 'u777', cid: 777, data: ' :)'
 
         yield migration.down() # Вызывает removeIndex еще раз.
         yield return
