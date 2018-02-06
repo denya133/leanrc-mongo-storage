@@ -16,60 +16,78 @@ LeanRC              = require 'LeanRC'
 Parser              = require 'mongo-parse' #mongo-parse@2.0.2
 moment              = require 'moment'
 
-createModuleClass = (root = __dirname) ->
-  class Test extends LeanRC
-    @inheritProtected()
-    @include MongoStorage
-    @root root
-  Test.initialize()
+configs = null
 
-createCollectionClass = (Module) ->
-  class Module::MongoCollection extends Module::Collection
+createModuleClass = (root = __dirname, name = 'Test') ->
+  TestModule = class extends LeanRC
     @inheritProtected()
-    @include Module::QueryableMixin
+    @root root
+    @include MongoStorage
+    @initialize()
+  Reflect.defineProperty TestModule, 'name', value: name
+  TestModule
+
+createCollectionClass = (Module, name = 'MongoCollection') ->
+  TestCollection = class extends Module::Collection
+    @inheritProtected()
+    @include Module::QueryableCollectionMixin
     @include Module::MongoCollectionMixin
     @module Module
-  Module::MongoCollection.initialize()
+    @initialize()
+    @public configs: Object, { default: configs }
+  Reflect.defineProperty TestCollection, 'name', value: name
+  TestCollection
 
-createRecordClass = (Module) ->
-  class TestRecord extends Module::Record
+createRecordClass = (Module, name = 'TestRecord') ->
+  TestRecord = class extends Module::Record
     @inheritProtected()
     @module Module
     @attribute cid: Number, default: -1
     @attribute data: String, default: ''
     @public init: Function,
-      default: ->
-        @super arguments...
+      default: (args...) ->
+        @super args...
         @type = 'Test::TestRecord'
-  TestRecord.initialize()
+    @initialize()
+  Reflect.defineProperty TestRecord, 'name', value: name
+  TestRecord
+
+connections = {}
+
 
 describe 'MongoCollectionMixin', ->
   __db = null
   connectionData =
-    username: null
-    password: null
-    host: 'localhost'
-    port: '27017'
+    mongodb:
+      username: null
+      password: null
+      host: 'localhost'
+      port: '27017'
+      dbName: 'just_for_test'
     default_db: 'just_for_test'
-    db: 'just_for_test'
     dbGridFS: 'just_for_test_gridfs'
-    collection: 'test_thames_travel'
+    collection: 'test_tests'#'test_thames_travel'
+  configs = mongodb: connectionData.mongodb
 
   # db_url = "mongodb://localhost:27017/just_for_test?authSource=admin"
-  { username, password, host, port, default_db } = connectionData
+  { mongodb: {username, password, host, port}, default_db } = connectionData
   credentials = if username and password then "#{username}:#{password}@" else ''
   db_url = "mongodb://#{credentials}#{host}:#{port}/#{default_db}?authSource=admin"
 
+  createConnection = (dbName) ->
+    co ->
+      unless connections[dbName]?
+        { username, password, host, port } = connectionData.mongodb
+        creds = if username and password then "#{username}:#{password}@" else ''
+        dbUrl = "mongodb://#{creds}#{host}:#{port}/#{dbName}?authSource=admin"
+        connections[dbName] = yield MongoClient.connect dbUrl
+      connections[dbName]
+
   before ->
     co ->
-      # # db_url = "mongodb://localhost:27017/just_for_test?authSource=admin"
-      # credentials = ''
-      # { username, password, host, port, default_db } = connectionData
-      # if username and password
-      #   credentials =  "#{username}:#{password}@"
-      # db_url = "mongodb://#{credentials}#{host}:#{port}/#{default_db}?authSource=admin"
-      __db = yield MongoClient.connect db_url
-      dbCollection = yield __db.createCollection 'test_thames_travel'
+      { default_db } = connectionData
+      __db = yield createConnection default_db
+      dbCollection = yield __db.createCollection 'test_tests'#'test_thames_travel'
       date = new Date()
       yield dbCollection.save id: 'q1', cid: 1, data: 'three', createdAt: date, updatedAt: date
       date = new Date()
@@ -80,8 +98,9 @@ describe 'MongoCollectionMixin', ->
       yield return
   after ->
     co ->
-      yield __db.dropCollection 'test_thames_travel'
-      __db.close()
+      for connectionName, connection of connections
+        yield connection.dropDatabase()
+        yield connection.close yes
       yield return
 
   describe '.new', ->
@@ -90,8 +109,10 @@ describe 'MongoCollectionMixin', ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         collection = TestCollection.new()
+        # collection.onRegister()
         assert.isTrue collection?
         assert.instanceOf collection, TestCollection
+        # yield collection.onRemove()
         yield return
 
   describe '#connection', ->
@@ -101,13 +122,16 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        { db: dbName, collection: nativeCollectionName } = connectionData
+        collection.onRegister()
+        { mongodb: {dbName}, collection: nativeCollectionName } = connectionData
         connection = yield collection.connection
-        assert.isTrue TestCollection[TestCollection.classVariables['_connection'].pointer]?
-        voDB = yield connection.db dbName
+        # assert.isTrue TestCollection[TestCollection.classVariables['_connection'].pointer]?
+        assert.isTrue connection?
+        voDB = yield createConnection dbName
         nativeCollection = yield voDB.collection nativeCollectionName
         assert.isTrue nativeCollection?
         assert.isTrue (yield nativeCollection.find())?
+        yield collection.onRemove()
         yield return
 
   describe '#collection', ->
@@ -117,13 +141,15 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         nativeCollection = yield collection.collection
         assert.isTrue collection[TestCollection.instanceVariables['_collection'].pointer]?
         assert.isTrue nativeCollection?
         assert.isTrue (yield nativeCollection.find())?
-        db = yield MongoClient.connect db_url
+        db = yield createConnection default_db
         nativeCollection2 = db.collection connectionData.collection
         assert.deepEqual (yield nativeCollection.find().toArray())[0], (yield nativeCollection2.find().toArray())[0]
+        yield collection.onRemove()
         yield return
 
   describe '#bucket', ->
@@ -133,8 +159,11 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         bucket = yield collection.bucket
         assert.isTrue collection[TestCollection.instanceVariables['_bucket'].pointer]?
+        yield collection.onRemove()
         yield return
 
   describe '#onRegister', ->
@@ -145,7 +174,9 @@ describe 'MongoCollectionMixin', ->
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         collection.onRegister()
-        assert.isTrue TestCollection[TestCollection.classVariables['_connection'].pointer]?
+        # assert.isTrue TestCollection[TestCollection.classVariables['_connection'].pointer]?
+        assert.isTrue yes # TODO: Find out correct testing way
+        yield collection.onRemove()
         yield return
 
   describe '#operatorsMap', ->
@@ -155,6 +186,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         { operatorsMap } = collection
 
         assert.isFunction operatorsMap['$and']
@@ -364,6 +396,7 @@ describe 'MongoCollectionMixin', ->
           createdAt: $gte: yearStart
           createdAt: $lt: yearEnd
         ]
+        yield collection.onRemove()
         yield return
 
   # @TODO Нужно будет понипихать сюда больше проверок. Желательно реальных примеров query, и желательно сложных.
@@ -374,11 +407,13 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         result = collection.parseFilter
           field: 'a'
           operator: '$eq'
           operand: 'b'
         assert.deepEqual result, a: $eq: 'b'
+        yield collection.onRemove()
         yield return
     it 'Use the "parseFilter" method for parsed query', ->
       co ->
@@ -386,6 +421,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         result = collection.parseFilter
           parts: [
             operator: '$or'
@@ -424,6 +460,7 @@ describe 'MongoCollectionMixin', ->
             b: $eq: '2'
           ]
         ]
+        yield collection.onRemove()
         yield return
     it 'Use the "parseFilter" method for parsed query with operator "$elemMatch" and implicitField:no', ->
       co ->
@@ -431,6 +468,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         result = collection.parseFilter
           operator: '$elemMatch'
           field: '@a'
@@ -447,6 +485,7 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result, a: $elemMatch:
           b: $eq: 'c'
           d: $eq: 2
+        yield collection.onRemove()
         yield return
     it 'Use the "parseFilter" method for parsed query with operator "$elemMatch" and implicitField:yes', ->
       co ->
@@ -454,6 +493,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         result = collection.parseFilter
           operator: '$elemMatch'
           field: '@a'
@@ -468,15 +508,18 @@ describe 'MongoCollectionMixin', ->
         assert.deepEqual result, a: $elemMatch:
           $gte: 10,
           $lt: 15
+        yield collection.onRemove()
         yield return
 
   describe '#parseQuery', ->
+    ###
     it 'Check correctness logic of the "parseQuery" method for "insert" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         testRecord = TestRecord.new { cid: 5, data: '!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
@@ -512,12 +555,14 @@ describe 'MongoCollectionMixin', ->
         # res = yield nativeCollection.findOne cid: 5
         # assert.strictEqual res.data, '!'
         yield return
+        yield collection.onRemove()
     it 'Check correctness logic of the "parseQuery" method for "update" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         testRecord = TestRecord.new { cid: 5, data: '!!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
@@ -560,12 +605,14 @@ describe 'MongoCollectionMixin', ->
         # res = yield nativeCollection.findOne correctResult.filter
         # assert.strictEqual res.data, '!!'
         yield return
+        yield collection.onRemove()
     it 'Check correctness logic of the "parseQuery" method for "replace" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         testRecord = TestRecord.new { cid: 5, data: '!!!', createdAt: date, updatedAt: date }, collection
         query = Test::Query.new()
@@ -608,12 +655,15 @@ describe 'MongoCollectionMixin', ->
         # res = yield nativeCollection.findOne correctResult.filter
         # assert.strictEqual res.data, '!!!'
         yield return
+        yield collection.onRemove()
+    ###
     it 'Check correctness logic of the "parseQuery" method for "remove" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -626,9 +676,9 @@ describe 'MongoCollectionMixin', ->
           '$filter': '@doc.cid': $eq: 5
           '$remove': yes
         correctResult =
-          queryType: 'remove'
+          queryType: 'removeBy'
           filter: $and: [cid: $eq: 5]
-          isCustomReturn: no
+          isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
 
@@ -641,6 +691,7 @@ describe 'MongoCollectionMixin', ->
         # assert.strictEqual res.deletedCount, 1
         # res = yield nativeCollection.findOne correctResult.filter
         # assert.isFalse res?
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "count" records', -> # Need mongo version >= 3.4.0
       co ->
@@ -648,6 +699,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -665,7 +717,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $count: 'result'
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -674,6 +726,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.deepEqual res, result: 2
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "sum" records', ->
       co ->
@@ -681,6 +734,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -702,7 +756,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $project: _id: 0
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -711,6 +765,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.deepEqual res, result: 7 # 3 + 4
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "min" records', ->
       co ->
@@ -718,6 +773,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -741,7 +797,7 @@ describe 'MongoCollectionMixin', ->
               _id: 0
               result: "$cid"
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -750,6 +806,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.deepEqual res, result: 3
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "max" records', ->
       co ->
@@ -757,6 +814,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -780,7 +838,7 @@ describe 'MongoCollectionMixin', ->
               _id: 0
               result: "$cid"
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -789,6 +847,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.deepEqual res, result: 4
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "avg" records', ->
       co ->
@@ -796,6 +855,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -818,7 +878,7 @@ describe 'MongoCollectionMixin', ->
             $project:
               _id: 0
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -827,6 +887,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.deepEqual res, result: 3.5
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "sort" records', ->
       co ->
@@ -834,6 +895,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -858,7 +920,7 @@ describe 'MongoCollectionMixin', ->
               cid: -1
               data: 1
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -867,6 +929,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.strictEqual res.cid, 4
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "limit" records', ->
       co ->
@@ -874,6 +937,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -891,7 +955,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $limit: 1
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -900,6 +964,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 1
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "offset" records', ->
       co ->
@@ -907,6 +972,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -924,7 +990,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $skip: 1
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -933,6 +999,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.next()
         # assert.strictEqual res.cid, 4
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "collect" records, with using "into"', ->
       co ->
@@ -940,6 +1007,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -970,7 +1038,7 @@ describe 'MongoCollectionMixin', ->
                 deletedAt: '$deletedAt'
                 updatedAt: '$updatedAt'
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -979,6 +1047,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 2
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "collect" records, without using "into"', ->
       co ->
@@ -986,6 +1055,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -1014,7 +1084,7 @@ describe 'MongoCollectionMixin', ->
                 deletedAt: '$deletedAt'
                 updatedAt: '$updatedAt'
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1023,6 +1093,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 2
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "having" records', ->
       co ->
@@ -1030,6 +1101,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -1047,7 +1119,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $match: $and: [cid: $lt: 3]
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: no
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1059,6 +1131,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 1
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for simple format "return" records', ->
       co ->
@@ -1066,6 +1139,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -1085,7 +1159,7 @@ describe 'MongoCollectionMixin', ->
               _id: 0
               data: 1
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1097,6 +1171,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 2
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for complex format "return" records', ->
       co ->
@@ -1104,6 +1179,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -1125,7 +1201,7 @@ describe 'MongoCollectionMixin', ->
             $project:
               superdata: 1
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1137,6 +1213,7 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 2
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "return" with "distinct" format records', ->
       co ->
@@ -1144,6 +1221,7 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
@@ -1167,7 +1245,7 @@ describe 'MongoCollectionMixin', ->
           ,
             $group: _id: "$$CURRENT"
           ]
-          queryType: 'find'
+          queryType: 'query'
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1179,15 +1257,19 @@ describe 'MongoCollectionMixin', ->
         # cursor = yield nativeCollection.aggregate correctResult.pipeline, cursor: batchSize: 1
         # res = yield cursor.toArray()
         # assert.strictEqual res.length, 2
+        yield collection.onRemove()
         yield return
 
   describe '#executeQuery', ->
+    ###
     it 'Check correctness logic of the "executeQuery" method for "insert" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         query =
           queryType: 'insert'
@@ -1207,12 +1289,15 @@ describe 'MongoCollectionMixin', ->
         assert.strictEqual resultArray[0].cid, query.snapshot.cid
         assert.strictEqual resultArray[0].data, query.snapshot.data
         yield return
+        yield collection.onRemove()
     it 'Check correctness logic of the "executeQuery" method for "update" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         query =
           queryType: 'update'
@@ -1232,12 +1317,15 @@ describe 'MongoCollectionMixin', ->
         assert.strictEqual resultArray[0].cid, query.snapshot.cid
         assert.strictEqual resultArray[0].data, query.snapshot.data
         yield return
+        yield collection.onRemove()
     it 'Check correctness logic of the "executeQuery" method for "replace" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         query =
           queryType: 'replace'
@@ -1257,18 +1345,24 @@ describe 'MongoCollectionMixin', ->
         assert.strictEqual resultArray[0].cid, query.snapshot.cid
         assert.strictEqual resultArray[0].data, query.snapshot.data
         yield return
-    it 'Check correctness logic of the "executeQuery" method for "remove" record', ->
+        yield collection.onRemove()
+    ###
+    it 'Check correctness logic of the "executeQuery" method for "removeBy" record', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         query =
-          queryType: 'remove'
+          queryType: 'removeBy'
           filter: $and: [cid: $eq: 6]
+          isCustomReturn: yes
         result = yield collection.executeQuery query
         resultArray = yield result.toArray()
         assert.strictEqual resultArray.length, 0
+        yield collection.onRemove()
         yield return
     it 'Check correctness logic of the "parseQuery" method for "find" records', -> # Need mongo version >= 3.4.0
       co ->
@@ -1276,8 +1370,10 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         query =
-          queryType: 'find'
+          queryType: 'query'
           pipeline: [
             $match: $and: [cid: $gt: 2]
           ,
@@ -1287,10 +1383,12 @@ describe 'MongoCollectionMixin', ->
           ,
             $limit: 1
           ]
+          isCustomReturn: yes
         result = yield collection.executeQuery query
         resultArray = yield result.toArray()
         assert.strictEqual resultArray[0].cid, 4
         assert.strictEqual resultArray[0].data, 'a boat'
+        yield collection.onRemove()
         yield return
 
   describe '#take', ->
@@ -1300,10 +1398,13 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         result = yield collection.take 'r4'
         assert.instanceOf result, TestRecord
         assert.strictEqual result.cid, 4
         assert.strictEqual result.data, 'a boat'
+        yield collection.onRemove()
         yield return
 
   describe '#takeMany', ->
@@ -1313,11 +1414,14 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         result = yield collection.takeMany ['e3', 'r4']
         resultArray = yield result.toArray()
         assert.strictEqual resultArray.length, 2
         assert.strictEqual resultArray[1].cid, 4
         assert.strictEqual resultArray[1].data, 'a boat'
+        yield collection.onRemove()
         yield return
 
   describe '#takeAll', ->
@@ -1327,11 +1431,14 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         result = yield collection.takeAll()
         resultArray = yield result.toArray()
         assert.strictEqual resultArray.length, 4
         assert.strictEqual resultArray[1].cid, 2
         assert.strictEqual resultArray[1].data, 'men'
+        yield collection.onRemove()
         yield return
 
   describe '#includes', ->
@@ -1341,10 +1448,13 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         result = yield collection.includes 'w2'
         assert.isTrue result
         result = yield collection.includes 'w3'
         assert.isFalse result
+        yield collection.onRemove()
         yield return
 
   describe '#length', ->
@@ -1354,8 +1464,11 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         result = yield collection.length()
         assert.strictEqual result, 4
+        yield collection.onRemove()
         yield return
 
   describe '#push', ->
@@ -1365,13 +1478,16 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
         result = yield collection.push testRecord
-        assert.isTrue result
+        assert.isTrue result?
         insertedResult = yield collection.take 'u7'
         assert.strictEqual insertedResult.cid, 7
         assert.strictEqual insertedResult.data, ' :)'
+        yield collection.onRemove()
         yield return
 
   describe '#override', ->
@@ -1381,18 +1497,20 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         testRecord = yield collection.take 'u7'
         assert.isTrue testRecord?
         testRecord.data = ' ;)'
         assert.strictEqual testRecord.data, ' ;)'
-        result = yield collection.override testRecord.id, testRecord
-        resultObject = yield result.first()
+        resultObject = yield collection.override testRecord.id, testRecord
         assert.strictEqual resultObject.cid, 7
         assert.strictEqual resultObject.data, ' ;)'
         overridedResult = yield collection.take 'u7'
         assert.strictEqual overridedResult.cid, 7
         assert.strictEqual overridedResult.data, ' ;)'
+        yield collection.onRemove()
         yield return
 
   describe '#patch', ->
@@ -1402,18 +1520,20 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
         date = new Date()
         testRecord = yield collection.take 'u7'
         assert.isTrue testRecord?
         testRecord.data = ' ;-)'
         assert.strictEqual testRecord.data, ' ;-)'
-        result = yield collection.override testRecord.id, testRecord
-        resultObject = yield result.first()
+        resultObject = yield collection.override testRecord.id, testRecord
         assert.strictEqual resultObject.cid, 7
         assert.strictEqual resultObject.data, ' ;-)'
         patchedResult = yield collection.take 'u7'
         assert.strictEqual patchedResult.cid, 7
         assert.strictEqual patchedResult.data, ' ;-)'
+        yield collection.onRemove()
         yield return
 
   describe '#remove', ->
@@ -1423,14 +1543,23 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST1'
         notDeletedResult = yield collection.take 'u7'
         assert.isTrue notDeletedResult?
+        yield collection.onRemove()
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST2'
         result = yield collection.remove notDeletedResult.id
-        assert.isTrue result
+        assert.isUndefined result
+        yield collection.onRemove()
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST3'
         deletedResult = yield collection.take 'u7'
         assert.isFalse deletedResult?
+        yield collection.onRemove()
         yield return
 
   describe '#createFileWriteStream', ->
@@ -1440,9 +1569,13 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
-        { db: dbName, collection: collectionName } = connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST1'
+        # { mongodb: {dbName}, collection: collectionName } = connectionData
+        { mongodb: {dbName} } = connectionData
+        collectionName = 'binary-store'
         connection = yield collection.connection
-        voDB = yield connection.db dbName
+        voDB = yield createConnection "#{dbName}_fs"
         filesCollection = yield voDB.collection "#{collectionName}.files"
         chunksCollection = yield voDB.collection "#{collectionName}.chunks"
 
@@ -1478,6 +1611,7 @@ describe 'MongoCollectionMixin', ->
         indexes = yield chunksCollection.listIndexes().toArray()
         assert.strictEqual indexes.length, 2
         assert.strictEqual indexes[1].name, 'files_id_1_n_1'
+        yield collection.onRemove()
         yield return
 
   describe '#createFileReadStream', ->
@@ -1487,6 +1621,8 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
 
         readFileStream = fs.createReadStream "#{__dirname}/test-data/gridfs-test"
         licenseFile = fs.readFileSync "#{__dirname}/test-data/gridfs-test"
@@ -1506,6 +1642,7 @@ describe 'MongoCollectionMixin', ->
         yield promise
         assert.include buffer.toString('utf8'), 'TERMS AND CONDITIONS'
         assert.isTrue gotData
+        yield collection.onRemove()
         yield return
 
 
@@ -1516,6 +1653,8 @@ describe 'MongoCollectionMixin', ->
         TestCollection = createCollectionClass Test
         TestRecord = createRecordClass Test
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
+        collection.onRegister()
+        collection.initializeNotifier 'TEST'
 
         readFileStream = fs.createReadStream "#{__dirname}/test-data/gridfs-test"
         licenseFile = fs.readFileSync "#{__dirname}/test-data/gridfs-test"
@@ -1525,4 +1664,5 @@ describe 'MongoCollectionMixin', ->
         yield promise
         assert.isTrue yield collection.fileExists _id: 'license.test'
         assert.isFalse yield collection.fileExists _id: 'license.test11'
+        yield collection.onRemove()
         yield return
