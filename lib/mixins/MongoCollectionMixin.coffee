@@ -289,7 +289,10 @@ module.exports = (Module)->
           $mod: (aoFirst, aoSecond)->
             "#{wrapReference(aoFirst)}": $mod: aoSecond
           $regex: (aoFirst, aoSecond, aoThird)-> # value must be string. ckeck it by RegExp.
-            [full, regexp, params] = /^\/([\s\S]*)\/(i?m?)$/i.exec aoSecond
+            regExpDefinitions = /^\/([\s\S]*)\/(i?m?)$/i.exec aoSecond
+            unless regExpDefinitions?
+              throw new Error "Invalid Regular Expression"
+            [full, regexp, params] = regExpDefinitions
             value = $regex: new RegExp regexp, params
             if aoThird?
               value["$options"] = aoThird
