@@ -353,25 +353,62 @@ module.exports = (Module)->
           isCustomReturn = no
 
           if aoQuery.$remove?
-            if aoQuery.$forIn?
-              # работа будет только с одной коллекцией, поэтому игнорируем
-              voQuery.filter = {}
+            if aoQuery.$into?
               voQuery.queryType = 'removeBy'
-              if (voFilter = aoQuery.$filter)?
-                voQuery.filter = @parseFilter Parser.parse voFilter
-              isCustomReturn = yes
-              voQuery
+              if aoQuery.$forIn?
+                # работа будет только с одной коллекцией, поэтому не учитываем $forIn
+
+                voQuery.pipeline = []
+
+                if (voFilter = aoQuery.$filter)?
+                  voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
+
+                if (voSort = aoQuery.$sort)?
+                  voQuery.pipeline.push $sort: voSort.reduce (result, item)->
+                    for own asRef, asSortDirect of item
+                      result[wrapReference asRef] = if asSortDirect is 'ASC'
+                        1
+                      else
+                        -1
+                    result
+                  , {}
+
+                if (vnOffset = aoQuery.$offset)?
+                  voQuery.pipeline.push $skip: vnOffset
+
+                if (vnLimit = aoQuery.$limit)?
+                  voQuery.pipeline.push $limit: vnLimit
+                isCustomReturn = yes
+                voQuery
           else if aoQuery.$patch?
             if aoQuery.$into?
-              voQuery.filter = {}
               voQuery.queryType = 'patchBy'
               if aoQuery.$forIn?
-                # работа будет только с одной коллекцией, поэтому игнорируем $forIn
+                # работа будет только с одной коллекцией, поэтому не учитываем $forIn
+
+                voQuery.pipeline = []
+
                 if (voFilter = aoQuery.$filter)?
-                  voQuery.filter = @parseFilter Parser.parse voFilter
-              voQuery.patch = aoQuery.$patch
-              isCustomReturn = yes
-              voQuery
+                  voQuery.pipeline.push $match: @parseFilter Parser.parse voFilter
+
+                if (voSort = aoQuery.$sort)?
+                  voQuery.pipeline.push $sort: voSort.reduce (result, item)->
+                    for own asRef, asSortDirect of item
+                      result[wrapReference asRef] = if asSortDirect is 'ASC'
+                        1
+                      else
+                        -1
+                    result
+                  , {}
+
+                if (vnOffset = aoQuery.$offset)?
+                  voQuery.pipeline.push $skip: vnOffset
+
+                if (vnLimit = aoQuery.$limit)?
+                  voQuery.pipeline.push $limit: vnLimit
+                voQuery.patch = aoQuery.$patch
+                isCustomReturn = yes
+                voQuery
           else if aoQuery.$forIn?
             voQuery.queryType = 'query'
             voQuery.pipeline = []
@@ -487,14 +524,30 @@ module.exports = (Module)->
             when 'query'
               yield collection.aggregate aoQuery.pipeline, cursor: batchSize: 1
             when 'patchBy'
-              yield collection.updateMany aoQuery.filter, $set: aoQuery.patch,
+              voPipeline = aoQuery.pipeline
+              voPipeline.push $project: _id: 1
+              subCursor = MongoCursor.new(
+                null
+              ,
+                yield collection.aggregate voPipeline, cursor: batchSize: 1000
+              )
+              ids = yield subCursor.map co.wrap (i)-> yield return i._id
+              yield collection.updateMany {_id: $in: ids}, $set: aoQuery.patch,
                 multi: yes
                 w: "majority"
                 j: yes
                 wtimeout: 500
               null
             when 'removeBy'
-              yield collection.deleteMany aoQuery.filter,
+              voPipeline = aoQuery.pipeline
+              voPipeline.push $project: _id: 1
+              subCursor = MongoCursor.new(
+                null
+              ,
+                yield collection.aggregate voPipeline, cursor: batchSize: 1000
+              )
+              ids = yield subCursor.map co.wrap (i)-> yield return i._id
+              yield collection.deleteMany {_id: $in: ids},
                 w: "majority"
                 j: yes
                 wtimeout: 500
@@ -540,8 +593,8 @@ module.exports = (Module)->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::removeFile opts = #{jsonStringify opts}", LEVELS[DEBUG])
           cursor = yield bucket.find filename: opts._id
-          if cursor.hasNext()
-            yield bucket.delete cursor.next()._id
+          if (file = yield cursor.next())?
+            yield bucket.delete file._id
           yield return
 
 
