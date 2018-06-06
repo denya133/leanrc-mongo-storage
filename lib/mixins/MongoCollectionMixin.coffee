@@ -122,14 +122,14 @@ module.exports = (Module)->
           collection = yield @collection
           ipoMultitonKey = @constructor.instanceVariables['~multitonKey'].pointer
           stats = yield collection.stats()
-          snapshot = @serialize aoRecord
+          snapshot = yield @serialize aoRecord
           raw1 = yield collection.findOne id: $eq: snapshot.id
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::push ns = #{stats.ns}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.insertOne snapshot,
             w: "majority"
             j: yes
             wtimeout: 500
-          return @normalize yield collection.findOne id: $eq: snapshot.id
+          return yield @normalize yield collection.findOne id: $eq: snapshot.id
 
       @public @async remove: Function,
         default: (id)->
@@ -149,7 +149,7 @@ module.exports = (Module)->
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::take ns = #{stats.ns}, id = #{id}", LEVELS[DEBUG])
           rawRecord = yield collection.findOne {id: $eq: id}
           if rawRecord?
-            yield return @normalize rawRecord
+            return yield @normalize rawRecord
           else
             yield return
 
@@ -194,7 +194,7 @@ module.exports = (Module)->
       @public @async override: Function,
         default: (id, aoRecord)->
           collection = yield @collection
-          snapshot = @serialize aoRecord
+          snapshot = yield @serialize aoRecord
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::override ns = #{stats.ns}, id = #{id}, snapshot = #{jsonStringify snapshot}", LEVELS[DEBUG])
           yield collection.updateOne {id: $eq: id}, $set: snapshot,
@@ -204,7 +204,7 @@ module.exports = (Module)->
             wtimeout: 500
           rawRecord = yield collection.findOne {id: $eq: id}
           if rawRecord?
-            yield return @normalize rawRecord
+            return yield @normalize rawRecord
           else
             yield return
 

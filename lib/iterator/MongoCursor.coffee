@@ -49,7 +49,7 @@ module.exports = (Module)->
           when not data?
             yield return data
           when @[ipoCollection]?
-            yield return @[ipoCollection]?.normalize data
+            return yield @[ipoCollection]?.normalize data
           else
             yield return data
 
@@ -120,7 +120,7 @@ module.exports = (Module)->
             rawRecord = yield @[ipoCursor].next()
             unless _.isEmpty rawRecord
               record = if @[ipoCollection]?
-                @[ipoCollection].normalize rawResult
+                yield @[ipoCollection].normalize rawResult
               else
                 rawResult
               records.push record
