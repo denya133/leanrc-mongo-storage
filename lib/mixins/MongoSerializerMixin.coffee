@@ -6,23 +6,23 @@ module.exports = (Module)->
     class extends BaseClass
       @inheritProtected()
 
-      @public normalize: Function,
+      @public @async normalize: Function,
         default: (acRecord, ahPayload)->
           ahPayload.rev = ahPayload._rev
           ahPayload._rev = undefined
           delete ahPayload._rev
-          acRecord.normalize ahPayload, @collection
+          return yield acRecord.normalize ahPayload, @collection
 
-      @public serialize: Function,
+      @public @async serialize: Function,
         default: (aoRecord, options = null)->
           vcRecord = aoRecord.constructor
-          serialized = vcRecord.serialize aoRecord, options
+          serialized = yield vcRecord.serialize aoRecord, options
           serialized.rev = undefined
           hash = crypto.createHash 'md5'
           hash.update JSON.stringify serialized
           serialized._rev = hash.digest 'hex'
           delete serialized.rev
-          serialized
+          yield return serialized
 
 
       @initializeMixin()
