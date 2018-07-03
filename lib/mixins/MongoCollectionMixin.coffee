@@ -231,8 +231,9 @@ module.exports = (Module)->
           yield return stats.count
 
       buildIntervalQuery = (aoKey, aoInterval, aoIntervalSize, aoDirect)->
+        aoInterval = aoInterval.utc()
         voIntervalStart = aoInterval.startOf(aoIntervalSize).toISOString()
-        voIntervalEnd = aoInterval.endOf(aoIntervalSize).toISOString()
+        voIntervalEnd = aoInterval.clone().endOf(aoIntervalSize).toISOString()
         if aoDirect
           $and: [
             "#{aoKey}": $gte: voIntervalStart
