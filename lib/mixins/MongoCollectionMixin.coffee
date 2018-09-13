@@ -10,11 +10,11 @@ Parser          = require 'mongo-parse' #mongo-parse@2.0.2
 module.exports = (Module)->
   class MongoCollection extends Module::Collection
     @inheritProtected()
+    @include Module::MongoCollectionMixin
     @module Module
 
-    @include Module::MongoCollectionMixin
 
-  MongoCollection.initialize()
+    @initialize()
 ```
 ###
 
