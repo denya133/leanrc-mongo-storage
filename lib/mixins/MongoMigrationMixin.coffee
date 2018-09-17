@@ -103,13 +103,14 @@ module.exports = (Module)->
               initial = null
           else
             initial = null
-          voDB = yield @collection.connection
-          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addField qualifiedName = #{qualifiedName}, $set: #{jsonStringify "#{fieldName}": initial}", LEVELS[DEBUG])
-          collection = yield getCollection voDB, qualifiedName
-          yield collection.updateMany {},
-            $set:
-              "#{fieldName}": initial
-          , w: 1
+          if initial?
+            voDB = yield @collection.connection
+            @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addField qualifiedName = #{qualifiedName}, $set: #{jsonStringify "#{fieldName}": initial}", LEVELS[DEBUG])
+            collection = yield getCollection voDB, qualifiedName
+            yield collection.updateMany {},
+              $set:
+                "#{fieldName}": initial
+            , w: 1
           yield return
 
       @public @async addIndex: Function,
@@ -131,17 +132,7 @@ module.exports = (Module)->
 
       @public @async addTimestamps: Function,
         default: (collectionName, options)->
-          qualifiedName = @collection.collectionFullName collectionName
-          voDB = yield @collection.connection
-          collection = yield getCollection voDB, qualifiedName
-          timestamps =
-            createdAt: null
-            updatedAt: null
-            deletedAt: null
-          @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::addTimestamps qualifiedName = #{qualifiedName}, $set: #{jsonStringify timestamps}", LEVELS[DEBUG])
-          yield collection.updateMany {},
-            $set: timestamps
-          , w: 1
+          # NOTE: нет смысла выполнять запрос, т.к. в addField есть проверка if initial? и если null, то атрибут не добавляется
           yield return
 
       @public @async changeCollection: Function,

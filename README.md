@@ -6,8 +6,7 @@ LeanRC extension for creating application by using MongoDB storage.
 
 ## Usefull command in console for creation ssh agent
 ```
-eval `ssh-agent -s`
-ssh-add ~/.ssh/id_rsa
+eval `ssh-agent -s`; ssh-add ~/.ssh/id_rsa
 
 ```
 
