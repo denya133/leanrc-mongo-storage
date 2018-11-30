@@ -53,45 +53,60 @@ module.exports = (Module)->
 
 module.exports = (Module)->
   {
+    AnyT, NilT
+    FuncG, ListG, EnumG, MaybeG, UnionG, InterfaceG, AsyncFuncG
     Migration
+    Mixin
     LogMessage: {
       SEND_TO_LOG
       LEVELS
       DEBUG
     }
-    Utils: { _, jsonStringify }
+    Utils: { _, co, jsonStringify }
   } = Module::
 
-  getCollection = (db, collectionFullName) ->
-    Module::Promise.new (resolve, reject) ->
+  getCollection = AsyncFuncG(
+    [Object, String], Object
+  ) co.wrap (db, collectionFullName) ->
+    return yield Module::Promise.new (resolve, reject) ->
       db.collection collectionFullName, strict: yes, (err, col) ->
         if err? then reject err else resolve col
         return
       return
 
-  Module.defineMixin 'MongoMigrationMixin', (BaseClass = Migration) ->
+  Module.defineMixin Mixin 'MongoMigrationMixin', (BaseClass = Migration) ->
     class extends BaseClass
       @inheritProtected()
 
-      @public @async createCollection: Function,
-        default: (collectionName, options)->
+      { UP, DOWN, SUPPORTED_TYPES } = @::
+
+      @public @async createCollection: FuncG([String, MaybeG Object], NilT),
+        default: (collectionName, options = {})->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::createCollection qualifiedName = #{qualifiedName}, options = #{jsonStringify options}", LEVELS[DEBUG])
           yield voDB.createCollection qualifiedName, options
           yield return
 
-      @public @async createEdgeCollection: Function,
-        default: (collectionName1, collectionName2, options)->
+      @public @async createEdgeCollection: FuncG([String, String, MaybeG Object], NilT),
+        default: (collectionName1, collectionName2, options = {})->
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
           voDB = yield @collection.connection
           @collection.sendNotification(SEND_TO_LOG, "MongoMigrationMixin::createEdgeCollection qualifiedName = #{qualifiedName}, options = #{jsonStringify options}", LEVELS[DEBUG])
           yield voDB.createCollection qualifiedName, options
           yield return
 
-      @public @async addField: Function,
-        default: (collectionName, fieldName, options = {})->
+      @public @async addField: FuncG([String, String, UnionG(
+        EnumG SUPPORTED_TYPES
+        InterfaceG {
+          type: EnumG SUPPORTED_TYPES
+          default: AnyT
+        }
+      )], NilT),
+        default: (collectionName, fieldName, options)->
           qualifiedName = @collection.collectionFullName collectionName
+          if _.isString options
+            yield return
           if options.default?
             if _.isNumber(options.default) or _.isBoolean(options.default)
               initial = options.default
@@ -113,7 +128,11 @@ module.exports = (Module)->
             , w: 1
           yield return
 
-      @public @async addIndex: Function,
+      @public @async addIndex: FuncG([String, ListG(String), InterfaceG {
+        type: EnumG 'hash', 'skiplist', 'persistent', 'geo', 'fulltext'
+        unique: MaybeG Boolean
+        sparse: MaybeG Boolean
+      }], NilT),
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -130,17 +149,22 @@ module.exports = (Module)->
           yield collection.ensureIndex indexFields, opts
           yield return
 
-      @public @async addTimestamps: Function,
-        default: (collectionName, options)->
+      @public @async addTimestamps: FuncG([String, MaybeG Object], NilT),
+        default: (collectionName, options = {})->
           # NOTE: нет смысла выполнять запрос, т.к. в addField есть проверка if initial? и если null, то атрибут не добавляется
           yield return
 
-      @public @async changeCollection: Function,
+      @public @async changeCollection: FuncG([String, Object], NilT),
         default: (name, options)->
           # not supported in MongoDB because a collection can't been modified
           yield return
 
-      @public @async changeField: Function,
+      @public @async changeField: FuncG([String, String, UnionG(
+        EnumG SUPPORTED_TYPES
+        InterfaceG {
+          type: EnumG SUPPORTED_TYPES
+        }
+      )], NilT),
         default: (collectionName, fieldName, options)->
           {
             json
@@ -158,14 +182,18 @@ module.exports = (Module)->
             timestamp
             array
             hash
-          } = Module::Migration::SUPPORTED_TYPES
+          } = SUPPORTED_TYPES
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
           collection = yield getCollection voDB, qualifiedName
           cursor = yield collection.find().batchSize(1)
+          type = if _.isString options
+            options
+          else
+            options.type
           while yield cursor.hasNext()
             document = yield cursor.next()
-            newValue = switch options.type
+            newValue = switch type
               when boolean
                 Boolean document[fieldName]
               when decimal, float, integer
@@ -185,7 +213,7 @@ module.exports = (Module)->
               $set: "#{fieldName}": newValue
           yield return
 
-      @public @async renameField: Function,
+      @public @async renameField: FuncG([String, String, String], NilT),
         default: (collectionName, oldFieldName, newFieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -196,12 +224,12 @@ module.exports = (Module)->
               "#{oldFieldName}": newFieldName
           yield return
 
-      @public @async renameIndex: Function,
+      @public @async renameIndex: FuncG([String, String, String], NilT),
         default: (collectionName, oldIndexName, newIndexName)->
           # not supported in MongoDB because a index can't been modified
           yield return
 
-      @public @async renameCollection: Function,
+      @public @async renameCollection: FuncG([String, String], NilT),
         default: (collectionName, newCollectionName)->
           qualifiedName = @collection.collectionFullName collectionName
           newQualifiedName = @collection.collectionFullName newCollectionName
@@ -211,7 +239,7 @@ module.exports = (Module)->
           yield collection.rename newQualifiedName
           yield return
 
-      @public @async dropCollection: Function,
+      @public @async dropCollection: FuncG(String, NilT),
         default: (collectionName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -220,7 +248,7 @@ module.exports = (Module)->
             yield voDB.dropCollection qualifiedName
           yield return
 
-      @public @async dropEdgeCollection: Function,
+      @public @async dropEdgeCollection: FuncG([String, String], NilT),
         default: (collectionName1, collectionName2)->
           voDB = yield @collection.connection
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
@@ -229,7 +257,7 @@ module.exports = (Module)->
             yield voDB.dropCollection qualifiedName
           yield return
 
-      @public @async removeField: Function,
+      @public @async removeField: FuncG([String, String], NilT),
         default: (collectionName, fieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -241,7 +269,11 @@ module.exports = (Module)->
           , w: 1
           yield return
 
-      @public @async removeIndex: Function,
+      @public @async removeIndex: FuncG([String, ListG(String), InterfaceG {
+        type: EnumG 'hash', 'skiplist', 'persistent', 'geo', 'fulltext'
+        unique: MaybeG Boolean
+        sparse: MaybeG Boolean
+      }], NilT),
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -261,8 +293,8 @@ module.exports = (Module)->
             yield collection.dropIndex indexName
           yield return
 
-      @public @async removeTimestamps: Function,
-        default: (collectionName, options)->
+      @public @async removeTimestamps: FuncG([String, MaybeG Object], NilT),
+        default: (collectionName, options = {})->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
           collection = yield getCollection voDB, qualifiedName

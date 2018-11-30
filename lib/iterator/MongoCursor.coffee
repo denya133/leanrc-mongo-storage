@@ -2,47 +2,43 @@
 
 module.exports = (Module)->
   {
-    ANY
-
-    Collection
+    AnyT, NilT, PointerT
+    FuncG, MaybeG, UnionG
+    CollectionInterface, CursorInterface
     CoreObject
-    # CursorInterface
     Utils: { _ }
   } = Module::
 
   class MongoCursor extends CoreObject
     @inheritProtected()
-
-    # @implements CursorInterface
+    @implements CursorInterface
 
     @module Module
 
-    ipoCursor = @private cursor: ANY
-    ipoCollection = @private collection: Collection
+    ipoCursor = PointerT @private cursor: AnyT
+    ipoCollection = PointerT @private collection: CollectionInterface
 
     @public isClosed: Boolean,
       default: false
       get: ()->
         @[ipoCursor].isClosed()
 
-    @public setIterable: Function,
-      args: [ANY]
-      return: Module::CursorInterface
+    @public setIterable: FuncG(AnyT, CursorInterface),
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
 
-    @public setCollection: Function,
+    @public setCollection: FuncG(CollectionInterface, CursorInterface),
       default: (aoCollection)->
         @[ipoCollection] = aoCollection
         return @
 
-    @public @async toArray: Function,
+    @public @async toArray: FuncG([], Array),
       default: ->
         while yield @hasNext()
           yield @next()
 
-    @public @async next: Function,
+    @public @async next: FuncG([], AnyT),
       default: ->
         data = yield @[ipoCursor].next()
         switch
@@ -53,16 +49,16 @@ module.exports = (Module)->
           else
             yield return data
 
-    @public @async hasNext: Function,
+    @public @async hasNext: FuncG([], Boolean),
       default: -> yield not @isClosed and (yield @[ipoCursor].hasNext())
 
     @public @async close: Function,
       default: -> yield @[ipoCursor].close()
 
-    @public @async count: Function,
+    @public @async count: FuncG([], Number),
       default: -> yield @[ipoCursor].count yes
 
-    @public @async forEach: Function,
+    @public @async forEach: FuncG(Function, NilT),
       default: (lambda)->
         index = 0
         try
@@ -73,7 +69,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async map: Function,
+    @public @async map: FuncG(Function, Array),
       default: (lambda)->
         index = 0
         try
@@ -83,7 +79,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async filter: Function,
+    @public @async filter: FuncG(Function, Array),
       default: (lambda)->
         index = 0
         records = []
@@ -97,7 +93,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async find: Function,
+    @public @async find: FuncG(Function, AnyT),
       default: (lambda)->
         index = 0
         _record = null
@@ -112,7 +108,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async compact: Function,
+    @public @async compact: FuncG([], Array),
       default: ()->
         records = []
         try
@@ -129,7 +125,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async reduce: Function,
+    @public @async reduce: FuncG([Function, AnyT], AnyT),
       default: (lambda, initialValue)->
         try
           index = 0
@@ -141,7 +137,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async first: Function,
+    @public @async first: FuncG([], MaybeG AnyT),
       default: ()->
         try
           result = if yield @hasNext()
@@ -164,10 +160,11 @@ module.exports = (Module)->
         throw new Error "replicateObject method not supported for #{@name}"
         yield return
 
-    @public init: Function,
+    @public init: FuncG([MaybeG(CollectionInterface), MaybeG UnionG Array, Object], NilT),
       default: (aoCollection = null, aoCursor = null)->
         @super arguments...
         @[ipoCollection] = aoCollection
         @[ipoCursor] = aoCursor
+        return
 
     @initialize()
