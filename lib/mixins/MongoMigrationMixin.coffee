@@ -172,6 +172,7 @@ module.exports = (Module)->
             boolean
             date
             datetime
+            number
             decimal
             float
             integer
@@ -196,7 +197,7 @@ module.exports = (Module)->
             newValue = switch type
               when boolean
                 Boolean document[fieldName]
-              when decimal, float, integer
+              when decimal, float, integer, number
                 Number document[fieldName]
               when string, text, primary_key, binary, array
                 JSON.stringify document[fieldName]

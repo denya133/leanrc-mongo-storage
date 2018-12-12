@@ -42,12 +42,10 @@ createRecordClass = (Module, name = 'TestRecord') ->
   TestRecord = class extends Module::Record
     @inheritProtected()
     @module Module
-    @attribute cid: Number, default: -1
-    @attribute data: String, default: ''
-    @public init: Function,
-      default: (args...) ->
-        @super args...
-        @type = 'Test::TestRecord'
+    @attribute cid: Number,
+      default: -1
+    @attribute data: String,
+      default: ''
     @initialize()
   Reflect.defineProperty TestRecord, 'name', value: name
   TestRecord
@@ -88,13 +86,13 @@ describe 'MongoCollectionMixin', ->
       { default_db } = connectionData
       __db = yield createConnection default_db
       dbCollection = yield __db.createCollection 'test_tests'#'test_thames_travel'
-      date = new Date()
-      yield dbCollection.save id: 'q1', cid: 1, data: 'three', createdAt: date, updatedAt: date
-      date = new Date()
-      yield dbCollection.save id: 'w2', cid: 2, data: 'men', createdAt: date, updatedAt: date
-      date = new Date Date.now() + 1000
-      yield dbCollection.save id: 'e3', cid: 3, data: 'in', createdAt: date, updatedAt: date
-      yield dbCollection.save id: 'r4', cid: 4, data: 'a boat', createdAt: date, updatedAt: date
+      date = new Date().toISOString()
+      yield dbCollection.save id: 'q1', type: 'Test::TestRecord', cid: 1, data: 'three', createdAt: date, updatedAt: date
+      date = new Date().toISOString()
+      yield dbCollection.save id: 'w2', type: 'Test::TestRecord', cid: 2, data: 'men', createdAt: date, updatedAt: date
+      date = new Date(Date.now() + 1000).toISOString()
+      yield dbCollection.save id: 'e3', type: 'Test::TestRecord', cid: 3, data: 'in', createdAt: date, updatedAt: date
+      yield dbCollection.save id: 'r4', type: 'Test::TestRecord', cid: 4, data: 'a boat', createdAt: date, updatedAt: date
       yield return
   after ->
     co ->
@@ -108,7 +106,9 @@ describe 'MongoCollectionMixin', ->
       co ->
         Test = createModuleClass()
         TestCollection = createCollectionClass Test
-        collection = TestCollection.new()
+        TestRecord = createRecordClass Test
+        collection = TestCollection.new 'TEST_COLLECTION',
+          delegate: TestRecord
         # collection.onRegister()
         assert.isTrue collection?
         assert.instanceOf collection, TestCollection
@@ -293,8 +293,8 @@ describe 'MongoCollectionMixin', ->
         assert.throws (-> operatorsMap['$where']()) , Error
         assert.throws (-> operatorsMap['$text']()) , Error
 
-        todayStart = moment().startOf('day').toISOString()
-        todayEnd = moment().endOf('day').toISOString()
+        todayStart = moment().utc().startOf('day').toISOString()
+        todayEnd = moment().utc().endOf('day').toISOString()
         queryOperator = operatorsMap['$td'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: todayStart
@@ -306,8 +306,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: todayEnd
         ]
 
-        yesterdayStart = moment().subtract(1, 'days').startOf('day').toISOString()
-        yesterdayEnd = moment().subtract(1, 'days').endOf('day').toISOString()
+        yesterdayStart = moment().utc().subtract(1, 'days').startOf('day').toISOString()
+        yesterdayEnd = moment().utc().subtract(1, 'days').endOf('day').toISOString()
         queryOperator = operatorsMap['$ld'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: yesterdayStart
@@ -319,8 +319,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: yesterdayEnd
         ]
 
-        weekStart = moment().startOf('week').toISOString()
-        weekEnd = moment().endOf('week').toISOString()
+        weekStart = moment().utc().startOf('week').toISOString()
+        weekEnd = moment().utc().endOf('week').toISOString()
         queryOperator = operatorsMap['$tw'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: weekStart
@@ -332,8 +332,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: weekEnd
         ]
 
-        weekStart = moment().subtract(1, 'weeks').startOf('week').toISOString()
-        weekEnd = moment().subtract(1, 'weeks').endOf('week').toISOString()
+        weekStart = moment().utc().subtract(1, 'weeks').startOf('week').toISOString()
+        weekEnd = moment().utc().subtract(1, 'weeks').endOf('week').toISOString()
         queryOperator = operatorsMap['$lw'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: weekStart
@@ -345,8 +345,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: weekEnd
         ]
 
-        monthStart = moment().startOf('month').toISOString()
-        monthEnd = moment().endOf('month').toISOString()
+        monthStart = moment().utc().startOf('month').toISOString()
+        monthEnd = moment().utc().endOf('month').toISOString()
         queryOperator = operatorsMap['$tm'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: monthStart
@@ -358,8 +358,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: monthEnd
         ]
 
-        monthStart = moment().subtract(1, 'months').startOf('month').toISOString()
-        monthEnd = moment().subtract(1, 'months').endOf('month').toISOString()
+        monthStart = moment().utc().subtract(1, 'months').startOf('month').toISOString()
+        monthEnd = moment().utc().subtract(1, 'months').endOf('month').toISOString()
         queryOperator = operatorsMap['$lm'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: monthStart
@@ -371,8 +371,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: monthEnd
         ]
 
-        yearStart = moment().startOf('year').toISOString()
-        yearEnd = moment().endOf('year').toISOString()
+        yearStart = moment().utc().startOf('year').toISOString()
+        yearEnd = moment().utc().endOf('year').toISOString()
         queryOperator = operatorsMap['$ty'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: yearStart
@@ -384,8 +384,8 @@ describe 'MongoCollectionMixin', ->
           createdAt: $lt: yearEnd
         ]
 
-        yearStart = moment().subtract(1, 'years').startOf('year').toISOString()
-        yearEnd = moment().subtract(1, 'years').endOf('year').toISOString()
+        yearStart = moment().utc().subtract(1, 'years').startOf('year').toISOString()
+        yearEnd = moment().utc().subtract(1, 'years').endOf('year').toISOString()
         queryOperator = operatorsMap['$ly'] 'createdAt', yes
         assert.deepEqual queryOperator, $and: [
           createdAt: $gte: yearStart
@@ -667,17 +667,18 @@ describe 'MongoCollectionMixin', ->
         date = new Date()
         query = Test::Query.new()
           .forIn '@doc': collection.collectionFullName()
+          .into collection.collectionFullName()
           .filter '@doc.cid': $eq: 5
-          .remove()
-
+          .remove('@doc')
         result1 = yield collection.parseQuery query
         result2 = yield collection.parseQuery
           '$forIn': '@doc': collection.collectionFullName()
+          '$into': collection.collectionFullName()
           '$filter': '@doc.cid': $eq: 5
-          '$remove': yes
+          '$remove': '@doc'
         correctResult =
           queryType: 'removeBy'
-          filter: $and: [cid: $eq: 5]
+          pipeline: [ "$match": "$and": ["cid": "$eq": 5] ]
           isCustomReturn: yes
         assert.deepEqual result1, correctResult
         assert.deepEqual result2, correctResult
@@ -1355,10 +1356,11 @@ describe 'MongoCollectionMixin', ->
         collection = TestCollection.new 'TEST_COLLECTION', Object.assign {}, {delegate: TestRecord}, connectionData
         collection.onRegister()
         collection.initializeNotifier 'TEST'
-        query =
-          queryType: 'removeBy'
-          filter: $and: [cid: $eq: 6]
-          isCustomReturn: yes
+        query = Test::Query.new()
+          .forIn '@doc': collection.collectionFullName()
+          .into collection.collectionFullName()
+          .filter '@doc.cid': $eq: 6
+          .remove('@doc')
         result = yield collection.executeQuery query
         resultArray = yield result.toArray()
         assert.strictEqual resultArray.length, 0
@@ -1481,7 +1483,7 @@ describe 'MongoCollectionMixin', ->
         collection.onRegister()
         collection.initializeNotifier 'TEST'
         date = new Date()
-        testRecord = TestRecord.new { id: 'u7', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
+        testRecord = TestRecord.new { id: 'u7', type: 'Test::TestRecord', cid: 7, data: ' :)', createdAt: date, updatedAt: date }, collection
         result = yield collection.push testRecord
         assert.isTrue result?
         insertedResult = yield collection.take 'u7'

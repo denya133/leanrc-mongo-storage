@@ -15,15 +15,14 @@ module.exports = (Module)->
 
     @module Module
 
-    ipoCursor = PointerT @private cursor: AnyT
-    ipoCollection = PointerT @private collection: CollectionInterface
+    ipoCursor = PointerT @private cursor: MaybeG Object
+    ipoCollection = PointerT @private collection: MaybeG CollectionInterface
 
     @public isClosed: Boolean,
-      default: false
       get: ()->
-        @[ipoCursor].isClosed()
+        @[ipoCursor]?.isClosed() ? yes
 
-    @public setIterable: FuncG(AnyT, CursorInterface),
+    @public setIterable: FuncG(Object, CursorInterface),
       default: (aoCursor)->
         @[ipoCursor] = aoCursor
         return @
@@ -38,8 +37,10 @@ module.exports = (Module)->
         while yield @hasNext()
           yield @next()
 
-    @public @async next: FuncG([], AnyT),
+    @public @async next: FuncG([], MaybeG AnyT),
       default: ->
+        unless @[ipoCursor]?
+          yield return
         data = yield @[ipoCursor].next()
         switch
           when not data?
@@ -53,10 +54,15 @@ module.exports = (Module)->
       default: -> yield not @isClosed and (yield @[ipoCursor].hasNext())
 
     @public @async close: Function,
-      default: -> yield @[ipoCursor].close()
+      default: ->
+        yield Module::Promise.resolve @[ipoCursor]?.close()
+        yield return
 
     @public @async count: FuncG([], Number),
-      default: -> yield @[ipoCursor].count yes
+      default: ->
+        unless @[ipoCursor]?
+          yield return 0
+        yield yield @[ipoCursor].count yes
 
     @public @async forEach: FuncG(Function, NilT),
       default: (lambda)->
@@ -93,7 +99,7 @@ module.exports = (Module)->
           yield @close()
           throw err
 
-    @public @async find: FuncG(Function, AnyT),
+    @public @async find: FuncG(Function, MaybeG AnyT),
       default: (lambda)->
         index = 0
         _record = null
@@ -110,6 +116,8 @@ module.exports = (Module)->
 
     @public @async compact: FuncG([], Array),
       default: ()->
+        unless @[ipoCursor]?
+          yield return []
         records = []
         try
           while yield @hasNext()
@@ -160,11 +168,12 @@ module.exports = (Module)->
         throw new Error "replicateObject method not supported for #{@name}"
         yield return
 
-    @public init: FuncG([MaybeG(CollectionInterface), MaybeG UnionG Array, Object], NilT),
+    @public init: FuncG([MaybeG(CollectionInterface), MaybeG Object], NilT),
       default: (aoCollection = null, aoCursor = null)->
         @super arguments...
-        @[ipoCollection] = aoCollection
-        @[ipoCursor] = aoCursor
+        @[ipoCollection] = aoCollection if aoCollection?
+        @[ipoCursor] = aoCursor if aoCursor?
         return
+
 
     @initialize()

@@ -22,10 +22,11 @@ module.exports = (Module)->
 module.exports = (Module)->
   {
     AnyT, NilT, PromiseT, StreamT, PointerT, MomentT
-    FuncG, UnionG, MaybeG, EnumG, ListG, StructG, DictG
+    FuncG, UnionG, MaybeG, EnumG, ListG, StructG, DictG, InterfaceG
     RecordInterface, CursorInterface, QueryInterface
     Collection, Query, Cursor
     MongoCursor
+    Mixin
     LogMessage: {
       SEND_TO_LOG
       LEVELS
@@ -41,14 +42,17 @@ module.exports = (Module)->
     class extends BaseClass
       @inheritProtected()
 
-      ipoCollection = PointerT @private collection: PromiseT
-      ipoBucket     = PointerT @private bucket: PromiseT
+      ipoCollection = PointerT @private collection: MaybeG PromiseT
+      ipoBucket     = PointerT @private bucket: MaybeG PromiseT
 
-      wrapReference = FuncG(String, String) (value)->
-        if /^\@doc\./.test value
-          value.replace '@doc.', ''
+      wrapReference = FuncG(AnyT, MaybeG AnyT) (value)->
+        if _.isString value
+          if /^\@doc\./.test value
+            value.replace '@doc.', ''
+          else
+            value.replace '@', ''
         else
-          value.replace '@', ''
+          value
 
       @public connection: PromiseT,
         get: ->
@@ -310,12 +314,12 @@ module.exports = (Module)->
           $ly: (aoFirst, aoSecond)-> # last year
             buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'years'), 'year', aoSecond
 
-      @public parseFilter: FuncG(StructG({
-        field: String
+      @public parseFilter: FuncG(InterfaceG({
+        field: MaybeG String
         parts: MaybeG ListG Object
-        operator: String
-        operand: AnyT
-        implicitField: Boolean
+        operator: MaybeG String
+        operand: MaybeG AnyT
+        implicitField: MaybeG Boolean
       }), Object),
         default: ({field, parts = [], operator, operand, implicitField})->
           if field? and operator isnt '$elemMatch' and parts.length is 0
@@ -561,7 +565,7 @@ module.exports = (Module)->
             else
               Cursor.new null, []
           else
-            MongoCursor.new @, voNativeCursor ? []
+            MongoCursor.new @, voNativeCursor
           return voCursor
 
       @public @async createFileWriteStream: FuncG([StructG _id: String], StreamT),
@@ -580,7 +584,7 @@ module.exports = (Module)->
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return (yield bucket.find filename: opts._id).hasNext()
+          return yield (yield bucket.find filename: opts._id).hasNext()
 
       @public @async removeFile: FuncG([StructG _id: String], NilT),
         default: (opts) ->
