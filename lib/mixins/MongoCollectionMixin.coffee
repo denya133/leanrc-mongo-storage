@@ -35,7 +35,7 @@ module.exports = (Module)->
       LEVELS
       DEBUG
     }
-    Utils: { _, co, jsonStringify, moment }
+    Utils: { _, co, jsonStringify, moment, extend }
   } = Module::
 
   _connection = null
@@ -566,10 +566,13 @@ module.exports = (Module)->
       @public @async createFileWriteStream: Function,
         args: [Object]
         return: Object
-        default: (opts) ->
+        default: (opts, metadata = {}) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileWriteStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return bucket.openUploadStream opts._id, {}
+          mongodb = @getData().mongodb ? @configs.mongodb
+          { dbName } = mongodb
+          metadata = extend {}, { dbName }, metadata
+          yield return bucket.openUploadStream opts._id, { metadata }
 
       @public @async createFileReadStream: Function,
         args: [Object]
@@ -585,7 +588,7 @@ module.exports = (Module)->
         default: (opts, callback) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return (yield bucket.find filename: opts._id).hasNext()
+          return yield (yield bucket.find filename: opts._id).hasNext()
 
       @public @async removeFile: Function,
         args: [Object]
