@@ -32,7 +32,7 @@ module.exports = (Module)->
       LEVELS
       DEBUG
     }
-    Utils: { _, co, jsonStringify, moment, extend }
+    Utils: { _, co, jsonStringify, moment, assign }
   } = Module::
 
   _connection = null
@@ -577,7 +577,7 @@ module.exports = (Module)->
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileWriteStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
           mongodb = @getData().mongodb ? @configs.mongodb
           { dbName } = mongodb
-          metadata = extend {}, { dbName }, metadata
+          metadata = assign {}, { dbName }, metadata
           yield return bucket.openUploadStream opts._id, { metadata }
 
       @public @async createFileReadStream: FuncG([StructG _id: String], StreamT),
