@@ -32,7 +32,7 @@ module.exports = (Module)->
       LEVELS
       DEBUG
     }
-    Utils: { _, co, jsonStringify, moment }
+    Utils: { _, co, jsonStringify, moment, extend }
   } = Module::
 
   _connection = null
@@ -568,11 +568,17 @@ module.exports = (Module)->
             MongoCursor.new @, voNativeCursor
           return voCursor
 
-      @public @async createFileWriteStream: FuncG([StructG _id: String], StreamT),
-        default: (opts) ->
+      @public @async createFileWriteStream: FuncG([
+        StructG _id: String
+        MaybeG Object
+      ], StreamT),
+        default: (opts, metadata = {}) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileWriteStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return bucket.openUploadStream opts._id, {}
+          mongodb = @getData().mongodb ? @configs.mongodb
+          { dbName } = mongodb
+          metadata = extend {}, { dbName }, metadata
+          yield return bucket.openUploadStream opts._id, { metadata }
 
       @public @async createFileReadStream: FuncG([StructG _id: String], StreamT),
         default: (opts) ->
