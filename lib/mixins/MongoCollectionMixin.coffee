@@ -580,12 +580,15 @@ module.exports = (Module)->
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileReadStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return bucket.openDownloadStreamByName opts._id, {}
+          if (yield @fileExists opts)
+            yield return bucket.openDownloadStreamByName opts._id, {}
+          else
+            yield return
 
       @public @async fileExists: Function,
         args: [Object]
         return: Boolean
-        default: (opts, callback) ->
+        default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
           return yield (yield bucket.find filename: opts._id).hasNext()
@@ -593,7 +596,7 @@ module.exports = (Module)->
       @public @async removeFile: Function,
         args: [Object]
         return: NILL
-        default: (opts, callback) ->
+        default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::removeFile opts = #{jsonStringify opts}", LEVELS[DEBUG])
           cursor = yield bucket.find filename: opts._id
