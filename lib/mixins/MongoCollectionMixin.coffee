@@ -580,11 +580,14 @@ module.exports = (Module)->
           metadata = assign {}, { dbName }, metadata
           yield return bucket.openUploadStream opts._id, { metadata }
 
-      @public @async createFileReadStream: FuncG([StructG _id: String], StreamT),
+      @public @async createFileReadStream: FuncG([StructG _id: String], MaybeG StreamT),
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileReadStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
-          yield return bucket.openDownloadStreamByName opts._id, {}
+          if (yield @fileExists opts)
+            yield return bucket.openDownloadStreamByName opts._id, {}
+          else
+            yield return
 
       @public @async fileExists: FuncG([StructG _id: String], Boolean),
         default: (opts) ->
