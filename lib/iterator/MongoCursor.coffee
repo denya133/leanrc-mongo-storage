@@ -2,7 +2,7 @@
 
 module.exports = (Module)->
   {
-    AnyT, NilT, PointerT
+    AnyT, PointerT
     FuncG, MaybeG, UnionG
     CollectionInterface, CursorInterface
     CoreObject
@@ -64,7 +64,7 @@ module.exports = (Module)->
           yield return 0
         yield yield @[ipoCursor].count yes
 
-    @public @async forEach: FuncG(Function, NilT),
+    @public @async forEach: FuncG(Function),
       default: (lambda)->
         index = 0
         try
@@ -168,7 +168,7 @@ module.exports = (Module)->
         throw new Error "replicateObject method not supported for #{@name}"
         yield return
 
-    @public init: FuncG([MaybeG(CollectionInterface), MaybeG Object], NilT),
+    @public init: FuncG([MaybeG(CollectionInterface), MaybeG Object]),
       default: (aoCollection = null, aoCursor = null)->
         @super arguments...
         @[ipoCollection] = aoCollection if aoCollection?

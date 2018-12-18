@@ -21,7 +21,7 @@ module.exports = (Module)->
 
 module.exports = (Module)->
   {
-    AnyT, NilT, PromiseT, StreamT, PointerT, MomentT
+    AnyT, PromiseT, StreamT, PointerT, MomentT
     FuncG, UnionG, MaybeG, EnumG, ListG, StructG, DictG, InterfaceG
     RecordInterface, CursorInterface, QueryInterface
     Collection, Query, Cursor
@@ -126,7 +126,7 @@ module.exports = (Module)->
             wtimeout: 500
           return yield @normalize yield collection.findOne id: $eq: snapshot.id
 
-      @public @async remove: FuncG([UnionG String, Number], NilT),
+      @public @async remove: FuncG([UnionG String, Number]),
         default: (id)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -595,7 +595,7 @@ module.exports = (Module)->
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
           return yield (yield bucket.find filename: opts._id).hasNext()
 
-      @public @async removeFile: FuncG([StructG _id: String], NilT),
+      @public @async removeFile: FuncG([StructG _id: String]),
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::removeFile opts = #{jsonStringify opts}", LEVELS[DEBUG])

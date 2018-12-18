@@ -53,7 +53,7 @@ module.exports = (Module)->
 
 module.exports = (Module)->
   {
-    AnyT, NilT
+    AnyT
     FuncG, ListG, EnumG, MaybeG, UnionG, InterfaceG, AsyncFuncG
     Migration
     Mixin
@@ -80,7 +80,7 @@ module.exports = (Module)->
 
       { UP, DOWN, SUPPORTED_TYPES } = @::
 
-      @public @async createCollection: FuncG([String, MaybeG Object], NilT),
+      @public @async createCollection: FuncG([String, MaybeG Object]),
         default: (collectionName, options = {})->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -88,7 +88,7 @@ module.exports = (Module)->
           yield voDB.createCollection qualifiedName, options
           yield return
 
-      @public @async createEdgeCollection: FuncG([String, String, MaybeG Object], NilT),
+      @public @async createEdgeCollection: FuncG([String, String, MaybeG Object]),
         default: (collectionName1, collectionName2, options = {})->
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
           voDB = yield @collection.connection
@@ -102,7 +102,7 @@ module.exports = (Module)->
           type: EnumG SUPPORTED_TYPES
           default: AnyT
         }
-      )], NilT),
+      )]),
         default: (collectionName, fieldName, options)->
           qualifiedName = @collection.collectionFullName collectionName
           if _.isString options
@@ -132,7 +132,7 @@ module.exports = (Module)->
         type: EnumG 'hash', 'skiplist', 'persistent', 'geo', 'fulltext'
         unique: MaybeG Boolean
         sparse: MaybeG Boolean
-      }], NilT),
+      }]),
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -149,12 +149,12 @@ module.exports = (Module)->
           yield collection.ensureIndex indexFields, opts
           yield return
 
-      @public @async addTimestamps: FuncG([String, MaybeG Object], NilT),
+      @public @async addTimestamps: FuncG([String, MaybeG Object]),
         default: (collectionName, options = {})->
           # NOTE: нет смысла выполнять запрос, т.к. в addField есть проверка if initial? и если null, то атрибут не добавляется
           yield return
 
-      @public @async changeCollection: FuncG([String, Object], NilT),
+      @public @async changeCollection: FuncG([String, Object]),
         default: (name, options)->
           # not supported in MongoDB because a collection can't been modified
           yield return
@@ -164,7 +164,7 @@ module.exports = (Module)->
         InterfaceG {
           type: EnumG SUPPORTED_TYPES
         }
-      )], NilT),
+      )]),
         default: (collectionName, fieldName, options)->
           {
             json
@@ -214,7 +214,7 @@ module.exports = (Module)->
               $set: "#{fieldName}": newValue
           yield return
 
-      @public @async renameField: FuncG([String, String, String], NilT),
+      @public @async renameField: FuncG([String, String, String]),
         default: (collectionName, oldFieldName, newFieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -225,12 +225,12 @@ module.exports = (Module)->
               "#{oldFieldName}": newFieldName
           yield return
 
-      @public @async renameIndex: FuncG([String, String, String], NilT),
+      @public @async renameIndex: FuncG([String, String, String]),
         default: (collectionName, oldIndexName, newIndexName)->
           # not supported in MongoDB because a index can't been modified
           yield return
 
-      @public @async renameCollection: FuncG([String, String], NilT),
+      @public @async renameCollection: FuncG([String, String]),
         default: (collectionName, newCollectionName)->
           qualifiedName = @collection.collectionFullName collectionName
           newQualifiedName = @collection.collectionFullName newCollectionName
@@ -240,7 +240,7 @@ module.exports = (Module)->
           yield collection.rename newQualifiedName
           yield return
 
-      @public @async dropCollection: FuncG(String, NilT),
+      @public @async dropCollection: FuncG(String),
         default: (collectionName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -249,7 +249,7 @@ module.exports = (Module)->
             yield voDB.dropCollection qualifiedName
           yield return
 
-      @public @async dropEdgeCollection: FuncG([String, String], NilT),
+      @public @async dropEdgeCollection: FuncG([String, String]),
         default: (collectionName1, collectionName2)->
           voDB = yield @collection.connection
           qualifiedName = @collection.collectionFullName "#{collectionName1}_#{collectionName2}"
@@ -258,7 +258,7 @@ module.exports = (Module)->
             yield voDB.dropCollection qualifiedName
           yield return
 
-      @public @async removeField: FuncG([String, String], NilT),
+      @public @async removeField: FuncG([String, String]),
         default: (collectionName, fieldName)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -274,7 +274,7 @@ module.exports = (Module)->
         type: EnumG 'hash', 'skiplist', 'persistent', 'geo', 'fulltext'
         unique: MaybeG Boolean
         sparse: MaybeG Boolean
-      }], NilT),
+      }]),
         default: (collectionName, fieldNames, options)->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
@@ -294,7 +294,7 @@ module.exports = (Module)->
             yield collection.dropIndex indexName
           yield return
 
-      @public @async removeTimestamps: FuncG([String, MaybeG Object], NilT),
+      @public @async removeTimestamps: FuncG([String, MaybeG Object]),
         default: (collectionName, options = {})->
           qualifiedName = @collection.collectionFullName collectionName
           voDB = yield @collection.connection
