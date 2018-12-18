@@ -21,37 +21,32 @@ module.exports = (Module)->
 
 module.exports = (Module)->
   {
-    ANY
-    NILL
-
-    Collection
-    # QueryableCollectionMixinInterface
-    PromiseInterface
-    Query
-    Cursor
+    AnyT, PromiseT, StreamT, PointerT, MomentT
+    FuncG, UnionG, MaybeG, EnumG, ListG, StructG, DictG, InterfaceG
+    RecordInterface, CursorInterface, QueryInterface
+    Collection, Query, Cursor
     MongoCursor
+    Mixin
     LogMessage: {
       SEND_TO_LOG
       LEVELS
       DEBUG
     }
-    Utils: { _, co, jsonStringify, moment, extend }
+    Utils: { _, co, jsonStringify, moment, assign }
   } = Module::
 
   _connection = null
   _consumers = null
 
-  Module.defineMixin 'MongoCollectionMixin', (BaseClass = Collection) ->
+  Module.defineMixin Mixin 'MongoCollectionMixin', (BaseClass = Collection) ->
     class extends BaseClass
       @inheritProtected()
 
-      # @implements QueryableCollectionMixinInterface
+      ipoCollection = PointerT @private collection: MaybeG PromiseT
+      ipoBucket     = PointerT @private bucket: MaybeG PromiseT
 
-      ipoCollection       = @private collection: PromiseInterface
-      ipoBucket           = @private bucket: PromiseInterface
-
-      wrapReference = (value)->
-        if _.isString(value)
+      wrapReference = FuncG(AnyT, MaybeG AnyT) (value)->
+        if _.isString value
           if /^\@doc\./.test value
             value.replace '@doc.', ''
           else
@@ -59,7 +54,7 @@ module.exports = (Module)->
         else
           value
 
-      @public connection: PromiseInterface,
+      @public connection: PromiseT,
         get: ->
           self = @
           _connection ?= co ->
@@ -73,7 +68,7 @@ module.exports = (Module)->
             yield return connection
           _connection
 
-      @public collection: PromiseInterface,
+      @public collection: PromiseT,
         get: ->
           self = @
           @[ipoCollection] ?= co ->
@@ -86,7 +81,7 @@ module.exports = (Module)->
               return
           @[ipoCollection]
 
-      @public bucket: PromiseInterface,
+      @public bucket: PromiseT,
         get: ->
           self = @
           @[ipoBucket] ?= co ->
@@ -117,7 +112,7 @@ module.exports = (Module)->
             _connection = undefined
           yield return
 
-      @public @async push: Function,
+      @public @async push: FuncG(RecordInterface, RecordInterface),
         default: (aoRecord)->
           collection = yield @collection
           ipoMultitonKey = @constructor.instanceVariables['~multitonKey'].pointer
@@ -131,7 +126,7 @@ module.exports = (Module)->
             wtimeout: 500
           return yield @normalize yield collection.findOne id: $eq: snapshot.id
 
-      @public @async remove: Function,
+      @public @async remove: FuncG([UnionG String, Number]),
         default: (id)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -142,7 +137,7 @@ module.exports = (Module)->
             wtimeout: 500
           yield return
 
-      @public @async take: Function,
+      @public @async take: FuncG([UnionG String, Number], MaybeG RecordInterface),
         default: (id)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -153,7 +148,7 @@ module.exports = (Module)->
           else
             yield return
 
-      @public @async takeBy: Function,
+      @public @async takeBy: FuncG([Object, MaybeG Object], CursorInterface),
         default: (query, options = {})->
           collection = yield @collection
           stats = yield collection.stats()
@@ -175,7 +170,7 @@ module.exports = (Module)->
             , {}
           yield return MongoCursor.new @, voNativeCursor
 
-      @public @async takeMany: Function,
+      @public @async takeMany: FuncG([ListG UnionG String, Number], CursorInterface),
         default: (ids)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -183,7 +178,7 @@ module.exports = (Module)->
           voNativeCursor = yield collection.find {id: $in: ids}
           yield return MongoCursor.new @, voNativeCursor
 
-      @public @async takeAll: Function,
+      @public @async takeAll: FuncG([], CursorInterface),
         default: ->
           collection = yield @collection
           stats = yield collection.stats()
@@ -191,7 +186,7 @@ module.exports = (Module)->
           voNativeCursor = yield collection.find()
           yield return MongoCursor.new @, voNativeCursor
 
-      @public @async override: Function,
+      @public @async override: FuncG([UnionG(String, Number), RecordInterface], RecordInterface),
         default: (id, aoRecord)->
           collection = yield @collection
           snapshot = yield @serialize aoRecord
@@ -203,19 +198,16 @@ module.exports = (Module)->
             j: yes
             wtimeout: 500
           rawRecord = yield collection.findOne {id: $eq: id}
-          if rawRecord?
-            return yield @normalize rawRecord
-          else
-            yield return
+          return yield @normalize rawRecord
 
-      @public @async includes: Function,
+      @public @async includes: FuncG([UnionG String, Number], Boolean),
         default: (id)->
           collection = yield @collection
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::includes ns = #{stats.ns}, id = #{id}", LEVELS[DEBUG])
           return (yield collection.findOne {id: $eq: id})?
 
-      @public @async exists: Function,
+      @public @async exists: FuncG(Object, Boolean),
         default: (query)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -223,14 +215,17 @@ module.exports = (Module)->
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::exists ns = #{stats.ns}, voQuery = #{jsonStringify voQuery}", LEVELS[DEBUG])
           return (yield collection.count voQuery) isnt 0
 
-      @public @async length: Function,
+      @public @async length: FuncG([], Number),
         default: ->
           collection = yield @collection
           stats = yield collection.stats()
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::length ns = #{stats.ns}", LEVELS[DEBUG])
           yield return stats.count
 
-      buildIntervalQuery = (aoKey, aoInterval, aoIntervalSize, aoDirect)->
+      buildIntervalQuery = FuncG(
+        [String, MomentT, EnumG('day', 'week', 'month', 'year'), Boolean]
+        Object
+      ) (aoKey, aoInterval, aoIntervalSize, aoDirect)->
         aoInterval = aoInterval.utc()
         voIntervalStart = aoInterval.startOf(aoIntervalSize).toISOString()
         voIntervalEnd = aoInterval.clone().endOf(aoIntervalSize).toISOString()
@@ -246,7 +241,7 @@ module.exports = (Module)->
           ]
 
       # @TODO Нужно добавить описание входных параметров опреторам и соответственно их проверку
-      @public operatorsMap: Object,
+      @public operatorsMap: DictG(String, Function),
         default:
           # Logical Query Operators
           $and: (def)-> $and: def
@@ -319,9 +314,13 @@ module.exports = (Module)->
           $ly: (aoFirst, aoSecond)-> # last year
             buildIntervalQuery wrapReference(aoFirst), moment().subtract(1, 'years'), 'year', aoSecond
 
-      @public parseFilter: Function,
-        args: [Object]
-        return: ANY
+      @public parseFilter: FuncG(InterfaceG({
+        field: MaybeG String
+        parts: MaybeG ListG Object
+        operator: MaybeG String
+        operand: MaybeG AnyT
+        implicitField: MaybeG Boolean
+      }), Object),
         default: ({field, parts = [], operator, operand, implicitField})->
           if field? and operator isnt '$elemMatch' and parts.length is 0
             customFilter = @delegate.customFilters[field]
@@ -340,7 +339,10 @@ module.exports = (Module)->
           else
             @operatorsMap[operator ? '$and'] parts.map @parseFilter.bind @
 
-      @public @async parseQuery: Function,
+      @public @async parseQuery: FuncG(
+        [UnionG Object, QueryInterface]
+        UnionG Object, String, QueryInterface
+      ),
         default: (aoQuery)->
           if aoQuery.$join?
             throw new Error '`$join` not available for Mongo queries'
@@ -516,7 +518,10 @@ module.exports = (Module)->
           voQuery.isCustomReturn = isCustomReturn ? no
           yield return voQuery
 
-      @public @async executeQuery: Function,
+      @public @async executeQuery: FuncG(
+        [UnionG Object, String, QueryInterface]
+        CursorInterface
+      ),
         default: (aoQuery, options)->
           collection = yield @collection
           stats = yield collection.stats()
@@ -560,23 +565,22 @@ module.exports = (Module)->
             else
               Cursor.new null, []
           else
-            MongoCursor.new @, voNativeCursor ? []
+            MongoCursor.new @, voNativeCursor
           return voCursor
 
-      @public @async createFileWriteStream: Function,
-        args: [Object]
-        return: Object
+      @public @async createFileWriteStream: FuncG([
+        StructG _id: String
+        MaybeG Object
+      ], StreamT),
         default: (opts, metadata = {}) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileWriteStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
           mongodb = @getData().mongodb ? @configs.mongodb
           { dbName } = mongodb
-          metadata = extend {}, { dbName }, metadata
+          metadata = assign {}, { dbName }, metadata
           yield return bucket.openUploadStream opts._id, { metadata }
 
-      @public @async createFileReadStream: Function,
-        args: [Object]
-        return: Object
+      @public @async createFileReadStream: FuncG([StructG _id: String], MaybeG StreamT),
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::createFileReadStream opts = #{jsonStringify opts}", LEVELS[DEBUG])
@@ -585,17 +589,13 @@ module.exports = (Module)->
           else
             yield return
 
-      @public @async fileExists: Function,
-        args: [Object]
-        return: Boolean
+      @public @async fileExists: FuncG([StructG _id: String], Boolean),
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::fileExists opts = #{jsonStringify opts}", LEVELS[DEBUG])
           return yield (yield bucket.find filename: opts._id).hasNext()
 
-      @public @async removeFile: Function,
-        args: [Object]
-        return: NILL
+      @public @async removeFile: FuncG([StructG _id: String]),
         default: (opts) ->
           bucket = yield @bucket
           @sendNotification(SEND_TO_LOG, "MongoCollectionMixin::removeFile opts = #{jsonStringify opts}", LEVELS[DEBUG])

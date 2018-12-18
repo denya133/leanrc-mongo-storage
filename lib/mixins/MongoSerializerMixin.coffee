@@ -2,18 +2,26 @@ crypto = require 'crypto'
 
 
 module.exports = (Module)->
-  Module.defineMixin 'MongoSerializerMixin', (BaseClass = Module::Serializer) ->
+  {
+    AnyT
+    FuncG, SubsetG, MaybeG
+    RecordInterface
+    Mixin
+    Serializer
+  } = Module::
+
+  Module.defineMixin Mixin 'MongoSerializerMixin', (BaseClass = Serializer) ->
     class extends BaseClass
       @inheritProtected()
 
-      @public @async normalize: Function,
+      @public @async normalize: FuncG([SubsetG(RecordInterface), MaybeG AnyT], RecordInterface),
         default: (acRecord, ahPayload)->
           ahPayload.rev = ahPayload._rev
           ahPayload._rev = undefined
           delete ahPayload._rev
           return yield acRecord.normalize ahPayload, @collection
 
-      @public @async serialize: Function,
+      @public @async serialize: FuncG([MaybeG(RecordInterface), MaybeG Object], MaybeG AnyT),
         default: (aoRecord, options = null)->
           vcRecord = aoRecord.constructor
           serialized = yield vcRecord.serialize aoRecord, options
