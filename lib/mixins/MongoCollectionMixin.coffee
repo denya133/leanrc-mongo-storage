@@ -45,7 +45,7 @@ module.exports = (Module)->
       ipoCollection = PointerT @private collection: MaybeG PromiseT
       ipoBucket     = PointerT @private bucket: MaybeG PromiseT
 
-      wrapReference = FuncG(AnyT, MaybeG AnyT) (value)->
+      wrapReference = (value)->
         if _.isString value
           if /^\@doc\./.test value
             value.replace '@doc.', ''
