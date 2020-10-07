@@ -2,7 +2,7 @@
 sinon               = require 'sinon'
 _                   = require 'lodash'
 MongoStorage        = require.main.require 'lib'
-LeanRC              = require 'LeanRC'
+LeanRC              = require '@leansdk/leanrc/lib'
 { co }              = LeanRC::Utils
 { MongoClient }     = require 'mongodb'
 

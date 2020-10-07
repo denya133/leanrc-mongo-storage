@@ -1,6 +1,6 @@
 { expect, assert } = require 'chai'
 sinon = require 'sinon'
-LeanRC = require 'LeanRC'
+LeanRC = require '@leansdk/leanrc/lib'
 MongoStorage = require.main.require 'lib'
 {
   FuncG, SubsetG
