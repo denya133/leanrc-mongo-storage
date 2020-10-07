@@ -21,7 +21,7 @@
 
   ```coffee
   LeanRC = require '@leansdk/leanrc'
-  MongoStorage = require 'leanrc-mongo-storage'
+  MongoStorage = require '@leansdk/leanrc-mongo-storage/lib'
 
   class TestApp extends LeanRC
     @inheritProtected()
@@ -46,9 +46,7 @@
   module.exports = TestApp.initialize().freeze()
   ```
   */
-  var Extension, LeanRC;
-
-  LeanRC = require('@leansdk/leanrc');
+  var Extension;
 
   Extension = function(BaseClass) {
     return (function() {

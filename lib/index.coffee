@@ -15,7 +15,6 @@
 
 # _         = require 'lodash'
 # fs        = require 'fs'
-LeanRC = require '@leansdk/leanrc/lib'
 
 ###
 Example of use
