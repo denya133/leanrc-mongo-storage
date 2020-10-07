@@ -15,14 +15,14 @@
 
 # _         = require 'lodash'
 # fs        = require 'fs'
-LeanRC = require 'LeanRC'
+LeanRC = require '@leansdk/leanrc/lib'
 
 ###
 Example of use
 
 ```coffee
-LeanRC = require 'LeanRC'
-MongoStorage = require 'leanrc-mongo-storage'
+LeanRC = require '@leansdk/leanrc/lib'
+MongoStorage = require '@leansdk/leanrc-mongo-storage/lib'
 
 class TestApp extends LeanRC
   @inheritProtected()
